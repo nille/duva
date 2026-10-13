@@ -73,7 +73,7 @@ test("a human adds a login and a card in Settings, sees only their last four, se
   await visa.getByRole("textbox", { name: "Per payment" }).fill("100");
   await visa.getByRole("textbox", { name: "Per month" }).fill("300");
   await visa.getByRole("button", { name: "Save limits" }).click();
-  await visa.locator("summary").getByText("Card ending 4242, pays up to 100.00 SEK at a time, 300.00 SEK a month").waitFor(wait);
+  await visa.locator("summary").getByText("Card ending 4242, pays up to 100.00 SEK at a time, 300.00 SEK a month, on no site yet").waitFor(wait);
 
   const shop = lines.filter({ hasText: "Example Shop" });
   await shop.locator("summary").click();
@@ -97,19 +97,65 @@ test("a human adds a login and a card in Settings, sees only their last four, se
   expect((await grace.GET("/secrets")).data!.secrets.map(({ name }) => name)).toEqual(["Example Shop login"]);
 });
 
-test("a payment above a card's limits waits in Approvals with its amount, site and card, and Coo's bubble says so, until the human approves it", budget, async () => {
+test("a human names the sites a card pays on as they add it, then adds and removes them on the card's line", budget, async () => {
+  const { page, signIn, grace } = await withMailbox();
+  await signIn("grace@example.org");
+  await openSecrets(page);
+  const add = page.getByRole("form", { name: "Add a secret" });
+
+  await add.getByRole("radio", { name: "Card" }).check();
+  await add.getByRole("textbox", { name: "Name", exact: true }).fill("Visa");
+  await add.getByRole("textbox", { name: "Card number" }).fill("4242 4242 4242 4242");
+  await add.getByRole("textbox", { name: "Expiry" }).fill("12/29");
+  await add.getByRole("textbox", { name: "Security code" }).fill("123");
+  await add.getByRole("textbox", { name: "Currency" }).fill("SEK");
+  await add.getByRole("textbox", { name: "Per payment" }).fill("100");
+  await add.getByRole("textbox", { name: "Per month" }).fill("300");
+  await add.getByRole("textbox", { name: "Sites it pays on" }).fill("https://www.sj.se/biljetter, netflix.com");
+  await add.getByRole("button", { name: "Add a secret" }).click();
+  await page.getByRole("status").filter({ hasText: "Added Visa." }).waitFor(wait);
+
+  const visa = page.locator(".secret-line").filter({ hasText: "Visa" });
+  await visa.locator("summary").getByText("Card ending 4242, pays up to 100.00 SEK at a time, 300.00 SEK a month, on www.sj.se and netflix.com").waitFor(wait);
+  const sites = visa.getByRole("list", { name: "Sites" });
+  await expect.poll(() => sites.getByRole("listitem").allInnerTexts(), wait).toEqual(["www.sj.se\nRemove", "netflix.com\nRemove"]);
+
+  await visa.getByRole("textbox", { name: "Site", exact: true }).fill("co.uk");
+  await visa.getByRole("button", { name: "Add site" }).click();
+  await visa.getByRole("alert").getByText(`"co.uk" isn't a site a card can pay on.`, { exact: false }).waitFor(wait);
+  await visa.getByRole("textbox", { name: "Site", exact: true }).fill("SJ.se");
+  await visa.getByRole("button", { name: "Add site" }).click();
+  await page.getByRole("status").filter({ hasText: "Added sj.se." }).waitFor(wait);
+  await visa.getByRole("button", { name: "Remove www.sj.se" }).click();
+  await page.getByRole("status").filter({ hasText: "Removed www.sj.se." }).waitFor(wait);
+  await expect.poll(() => visa.getByRole("list", { name: "Sites" }).getByRole("listitem").allInnerTexts(), wait).toEqual(["netflix.com\nRemove", "sj.se\nRemove"]);
+  expect((await grace.GET("/secrets")).data!.secrets[0]!.sites).toEqual(["netflix.com", "sj.se"]);
+
+  await visa.getByRole("button", { name: "Remove netflix.com" }).click();
+  await visa.getByRole("button", { name: "Remove sj.se" }).click();
+  await visa.getByText("None yet, so each payment waits for you.").waitFor(wait);
+});
+
+test("a payment above a card's limits waits in Approvals with its amount, site and card, and Coo's bubble says so; approved, Coo goes back to the page, and its bubble says it couldn't pay once the page expired", budget, async () => {
   const model = scripted({
     coo: [() => [use("browse", { url: "https://shop.example.net/checkout", goal: "Buy the coffee beans.", secrets: ["Visa"] })], () => [{ text: "The payment waits for your approval." }]],
-    page: [() => [use("fillSecret", { element: 1, secret: "Visa", part: "number", amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg" })]],
+    page: [
+      () => [use("fillSecret", { element: 1, secret: "Visa", part: "number", amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg" })],
+      () => [use("finish", { done: false, said: "The checkout had expired" })],
+    ],
   });
   const { page, signIn, duva, grace, mailbox } = await withMailbox({ model });
+  let expired = false;
   await duva.webServer("shop.example.net", {
     answer: () =>
-      new Response(`<!doctype html><title>Shop</title><p>Total: 149.00 SEK</p><form method="post" action="/pay"><label for="n">Card number</label><input id="n" name="n" autocomplete="cc-number"><button>Pay now</button></form>`, {
-        headers: { "content-type": "text/html" },
-      }),
+      new Response(
+        expired
+          ? "<!doctype html><title>Shop</title><p>This checkout has expired.</p>"
+          : `<!doctype html><title>Shop</title><p>Total: 149.00 SEK</p><form method="post" action="/pay"><label for="n">Card number</label><input id="n" name="n" autocomplete="cc-number"><button>Pay now</button></form>`,
+        { headers: { "content-type": "text/html" } },
+      ),
   });
-  await grace.POST("/secrets", { body: { kind: "card", name: "Visa", number: "4242424242424242", expiry: "12/29", cvc: "123", currency: "SEK", perPayment: "100.00", perMonth: "300.00" } });
+  await grace.POST("/secrets", { body: { kind: "card", name: "Visa", number: "4242424242424242", expiry: "12/29", cvc: "123", currency: "SEK", perPayment: "100.00", perMonth: "300.00", sites: ["example.net"] } });
   await signIn("grace@example.org");
   await page.getByRole("link", { name: /^Ask Coo/ }).first().waitFor(wait);
 
@@ -121,7 +167,11 @@ test("a payment above a card's limits waits in Approvals with its amount, site a
   expect(await row.innerText()).toContain("With Visa, for Coffee beans, 1 kg");
   const galley = page.locator(".galley-payment:not([hidden])");
   await galley.getByRole("heading", { level: 2 }).filter({ hasText: "149.00 SEK on example.net" }).waitFor(wait);
+  await galley.getByText("It's above Visa's limits, so the run stopped before paying and waits for you. Approved, Coo goes back to the page and pays it, once.").waitFor(wait);
+  expired = true;
   await galley.getByRole("button", { name: "Approve" }).click();
-  await galley.getByText("Approved. Ask Coo to pay it now, and its next run on the site pays it.").waitFor(wait);
+  await galley.getByText("Approved. Coo goes back to the page and pays it, and says in its activity how it went.").waitFor(wait);
+
+  await page.locator(".coo-says").getByRole("link", { name: "I couldn't pay 149.00 SEK on example.net as you approved: The checkout had expired." }).waitFor(wait);
   expect((await grace.GET("/payments")).data!.payments.map(({ state }) => state)).toEqual(["approved"]);
 });

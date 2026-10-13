@@ -236,8 +236,8 @@ export type FollowedUp = NonNullable<MailToCoo["outcome"]>;
 /** What waited at the end of a request's run: a draft's send, or a payment above its card's limits (ADR-0039), in the mailbox whose feed records it. */
 export type Waited = { mailbox: string } & ({ draft: string } | { payment: string });
 
-/** What the runner is handed for something that waited, once it is decided. */
-export type FollowUp = Waited & { outcome: FollowedUp };
+/** What the runner is handed for something that waited, once it is decided, with what the run that went back to pay said, if it couldn't. */
+export type FollowUp = Waited & { outcome: FollowedUp; said?: string };
 
 // What waited at the end of a request's run points at the request, in the mailbox whose feed records it.
 const followUpKey = (waited: Waited) => ({ [pk]: mailboxKey(waited.mailbox)[pk]!, [sk]: `coo-follow-up#${"draft" in waited ? waited.draft : `payment#${waited.payment}`}` });
@@ -249,9 +249,9 @@ export async function awaitDecision(table: Table, waited: Waited, request: Pick<
 
 /**
  * Takes the request the decision is followed up for, once: a second call finds none. A payment
- * approved is said, and followed up again once a later run pays it.
+ * approved is said, and followed up again once the run that goes back pays it, or couldn't (#171).
  */
-export async function takeFollowUp(table: Table, { outcome, ...waited }: FollowUp): Promise<Pick<CooRequest, "human" | "id"> | undefined> {
+export async function takeFollowUp(table: Table, { outcome, said: _, ...waited }: FollowUp): Promise<Pick<CooRequest, "human" | "id"> | undefined> {
   try {
     const { Attributes } = await documents(table).send(
       outcome === "approved"
@@ -268,7 +268,8 @@ export async function takeFollowUp(table: Table, { outcome, ...waited }: FollowU
 /**
  * The follow-up a change in a mailbox's feed, as the table's stream gives it, settles, if what it
  * decides waited at the end of a request's run: a draft Coo asked to send was sent, failed, or its
- * approval was rejected, or a payment was approved, declined, or paid as approved.
+ * approval was rejected, or a payment was approved, declined, paid as approved, or not paid by the
+ * run that went back to pay it.
  */
 export async function followUpOf(table: Table, record: DynamoDBStreamEvent["Records"][number]): Promise<FollowUp | undefined> {
   const image = record.dynamodb?.NewImage ?? {};
@@ -287,7 +288,9 @@ export async function followUpOf(table: Table, record: DynamoDBStreamEvent["Reco
             ? { mailbox, payment, outcome: image.approved?.BOOL === true ? "approved" : "declined" }
             : payment !== undefined && type === "paymentMade" && image.approved?.BOOL === true
               ? { mailbox, payment, outcome: "paid" }
-              : undefined;
+              : payment !== undefined && type === "paymentNotMade"
+                ? { mailbox, payment, outcome: "unpaid", ...(image.said?.S !== undefined && { said: image.said.S }) }
+                : undefined;
   if (followUp === undefined) return undefined;
   const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: followUpKey(followUp), ConsistentRead: true }));
   return Item === undefined ? undefined : followUp;

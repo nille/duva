@@ -597,8 +597,9 @@ function HeldSend({
 }
 
 /**
- * A payment of Coo's above its card's limits, in the reading pane: who asks, the amount and site as
- * the title, the card and what it is for, and the decision: Approve as the call, or Decline.
+ * A payment of Coo's above its card's limits, or on a site its card doesn't name (#171), in the
+ * reading pane: who asks, the amount and site as the title, why it waits, the card and what it is
+ * for, and the decision: Approve as the call, or Decline.
  */
 function PaymentGalley({
   shown,
@@ -645,7 +646,7 @@ function PaymentGalley({
           <Time at={payment.at} />
         </p>
       </header>
-      <p className="galley-lead">{copy.lead(payment.cardName)}</p>
+      <p className="galley-lead">{copy.lead(payment.cardName, payment.site, { newSite: payment.newSite === true, aboveLimits: payment.aboveLimits === true })}</p>
       <dl className="galley-fields galley-payment-fields">
         <Field label={copy.what}>{payment.for}</Field>
         <Field label={copy.card}>{payment.cardName}</Field>

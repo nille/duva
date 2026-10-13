@@ -91,9 +91,11 @@ export async function devToolsSession(endpoint: string, headers: Record<string, 
       return settled();
     },
     fill: (index, value) => act(`(${fill})(${index}, ${JSON.stringify(value)})`),
-    async typeIn(index, value) {
+    async typeIn(index, value, origin) {
       // The field is emptied and focused by script, and the value goes as typed text, never in a script.
       await evaluate(`(${fill})(${index}, "")`);
+      // A page that went elsewhere since it was read, as a script can take it, gets nothing.
+      if (origin !== undefined && (await evaluate("location.origin")) !== origin) throw new Error(`The page left ${origin} before the value was typed.`);
       await cdp.send("Input.insertText", { text: value }, page);
       return act(`(${changed})(${index})`);
     },

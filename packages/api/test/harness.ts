@@ -47,6 +47,7 @@ import { type Decider, type Model, runAgent } from "../src/agent-loop.ts";
 import { standIn } from "../src/strands.ts";
 import type { WebSearch } from "../src/web-search.ts";
 import { type AgentRuntime, type ConversationEvent, createConversation, type PreparedTurn } from "../src/conversation.ts";
+import { createPaymentRunner } from "../src/payment-runs.ts";
 import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner, type TaskRunnerEvent } from "../src/tasks.ts";
 import { createUnsubscribeRunner } from "../src/unsubscribe-runs.ts";
 import { standInBrowser } from "./browser.ts";
@@ -184,8 +185,8 @@ export interface DuvaOptions {
    */
   webSearch?: WebSearch;
   /**
-   * Whether the task runner runs the tasks labels' prompts give only at releaseTasks(), as when
-   * Lambda falls behind, so they wait until then.
+   * Whether the task runner runs the tasks labels' prompts give, and the runs that go back to pay a
+   * payment once approved, only at releaseTasks(), as when Lambda falls behind, so they wait until then.
    */
   tasksHeld?: boolean;
   /**
@@ -427,6 +428,7 @@ export async function startDuva({
     run: async (task) => void handedTasks.push(JSON.parse(JSON.stringify(task)) as TaskRef),
     unsubscribe: async (job) => void handedTasks.push(JSON.parse(JSON.stringify({ unsubscribe: job })) as TaskRunnerEvent),
     cooMail: async (job) => void handedTasks.push(JSON.parse(JSON.stringify({ cooMail: job })) as TaskRunnerEvent),
+    payment: async (job) => void handedTasks.push(JSON.parse(JSON.stringify({ payment: job })) as TaskRunnerEvent),
   };
   inbound = createInbound({ table, mailBucket, log: (line) => inboundLog.push(line), outbound: sending.outbound, bounces: ses.bounces, logos, unsubscriber, tasks: taskRunner });
   const receiving = { rules: ses.rules, bucket: mailBucketName, inboundFunction, suppressionList: sending.suppressionList };
@@ -611,13 +613,16 @@ export async function startDuva({
   const runTask = createTaskRunner({ table, region, apiUrl: inProcess, fetch: api, runtime });
   const unsubscribe = createUnsubscribeRunner({ table, region, apiUrl: inProcess, runtime, bounces: ses.bounces });
   const cooMail = createCooMail({ table, region, apiUrl: inProcess, runtime, embedder: titan, outbound: sending.outbound, mailBucket });
+  const pay = createPaymentRunner({ table, region, apiUrl: inProcess, runtime });
   const runHandedTasks = async () => {
     for (let task = handedTasks.shift(); task !== undefined; task = handedTasks.shift()) {
       if ("unsubscribe" in task) await unsubscribe(task.unsubscribe);
       else if ("cooMail" in task) await cooMail(task.cooMail);
+      else if ("payment" in task) await pay(task.payment);
       else await runTask(task);
-      // What the runner did reaches the sender through the table's stream.
+      // What the runner did reaches the sender, and the task giver, through the table's stream.
       if (!sendsHeld) await stream.deliver();
+      await tasking.deliver();
     }
   };
   // The task giver reads the table's stream, and hands its tasks to the runner, unless tasks are held.

@@ -8,8 +8,10 @@ Each human has a store of secrets for Coo to use:
 
 Coo uses them while browsing (ADR-0038), but never reads them. Coo's model never sees a value. The browsing run asks Duva to type a named secret into a page field, and Duva does it outside the model, so a page can't trick Coo into saying or mailing a secret it never saw. Nicklas chose this on 2026-10-11. It reverses two of ADR-0038's limits: Duva now keeps passwords, and Coo may pay.
 
-- **Where a secret is used is Coo's choice.** Nicklas chose that over binding each secret to its own sites.
+- **Where a login or another value is used is Coo's choice.** Nicklas chose that over binding each secret to its own sites.
+- **Cards pay only on their sites.** A card names the sites it may pay on, such as sj.se and netflix.com, which its human sets with it. Duva types a card only into a page whose address, as the browser reports it, is on one of them or a subdomain, never by what the page says, so a look-alike never gets it. A card with no sites pays nowhere: each of its payments waits in Approvals, as one on any site it doesn't name. A payment on another site waits in Approvals with the site named, and approving it adds the site to the card. Nicklas chose this on 2026-10-13 (#171), closing the gap below for cards.
 - **Payments:** a card pays unattended only within the per-payment and per-month limits its human sets. Above either limit, the payment waits in Approvals with its site, amount and card. A card with no limits set doesn't pay at all, and admins can switch paying off for the organization.
+- **Approving resumes.** Approving a payment that waited, above the limits or on a new site, starts a fresh browsing run that goes back to the page and pays it, so no one has to ask Coo again. If it can't, as when the page expired, Coo's activity and its bubble say why. Nicklas chose this on 2026-10-13 (#171).
 - **Storage:** secrets are encrypted with a KMS key under the human, in the deployment's region, and erased with the human. Admins and agents can't see them. The human sees only names and the last four digits, and can reveal a value again after confirming with a sign-in code.
 - **Record:** every use is listed in the secret's history: when, which site, which run. Every payment shows in Coo's activity with amount and site, and Coo's bubble says so at once.
 
@@ -17,12 +19,15 @@ Coo uses them while browsing (ADR-0038), but never reads them. Coo's model never
 
 - Site logins only, with Coo never paying. Rejected by Nicklas, who wants cards too.
 - Every payment waiting for approval. Rejected by Nicklas for unattended payments within limits.
-- Binding each secret to its own sites, checked by the browser's address. Recommended, since a look-alike page from mail couldn't get a secret then. Rejected by Nicklas, who leaves where to use one to Coo.
+- Binding each secret to its own sites, checked by the browser's address. Recommended, since a look-alike page from mail couldn't get a secret then. Rejected by Nicklas for logins and other values, whose use he leaves to Coo, and chosen for cards on 2026-10-13.
+- A fresh approval being used only by the next run Coo is asked for. Chosen first, then set aside by Nicklas: the human had to ask Coo again.
 - Coo reading values. Rejected: a value Coo never sees can't leak through what it says or sends.
 - AWS Secrets Manager per secret. Rejected: $0.40 a month for each secret, against near zero for KMS-encrypted items in the table (ADR-0006).
 
 ## Consequences
 
-- **A page can still be used to phish.** Because Coo chooses where a secret is typed, a page that convinces Coo it is the right site could receive a password or a card number. The browsing run's isolation (ADR-0031, ADR-0038) still keeps it from the mailbox, and payments stay within their limits. Every use is listed, so a misuse is visible.
+- **A page can still be used to phish a login or another value.** Because Coo chooses where those are typed, a page that convinces Coo it is the right site could receive a password. A card is typed only on its sites, by the page's address, so a look-alike can't get one. The browsing run's isolation (ADR-0031, ADR-0038) still keeps the mailbox from any page. Every use is listed, so a misuse is visible.
+- **Approving a new site is the human's check.** Approvals names the site, so a human who approves a look-alike adds it to the card.
+- **A payment that waits keeps its page,** the run's goal and the values and secrets' names it was given, until it is decided and the fresh run takes them. That's more than ADR-0038's sentence, and only for as long as the payment waits.
 - **Payment limits are counted per card and month** in the table, in the same transaction as the payment's record, so a retried run never pays twice.
 - **Revealing a value** asks for a fresh sign-in code, and is recorded in the secret's history.

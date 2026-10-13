@@ -2,7 +2,8 @@
 // with each task to run, and which runs the mailbox agent on it on AgentCore (ADR-0029), and which
 // the API and the inbound Lambda invoke with what one-click left of unsubscribing from a sender,
 // which the mailbox agent goes on with (ADR-0031), and with mail to a Coo's address to settle and
-// run, or a send Coo said it would follow up (ADR-0040). The CDK app sets the environment.
+// run, or a send Coo said it would follow up (ADR-0040), and with each payment its human approved,
+// to go back and pay (#171). The CDK app sets the environment.
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";
 import { SESClient } from "@aws-sdk/client-ses";
@@ -15,6 +16,7 @@ import { sesBounces } from "./group-mail.ts";
 import { environmentVariables } from "./infrastructure.ts";
 import { s3MailBucket } from "./mail-bucket.ts";
 import { sesOutbound } from "./outbound.ts";
+import { createPaymentRunner } from "./payment-runs.ts";
 import { createTaskRunner, type TaskRunnerEvent } from "./tasks.ts";
 import { titanEmbedder } from "./titan.ts";
 import { createUnsubscribeRunner } from "./unsubscribe-runs.ts";
@@ -30,6 +32,7 @@ const deployment = {
 };
 const runTask = createTaskRunner(deployment);
 const unsubscribe = createUnsubscribeRunner({ ...deployment, bounces: sesBounces(new SESClient({})) });
+const pay = createPaymentRunner(deployment);
 
 const cooMail = createCooMail({
   ...deployment,
@@ -39,4 +42,5 @@ const cooMail = createCooMail({
   mailBucket: s3MailBucket(new S3Client({}), required(environmentVariables.mailBucket)),
 });
 
-export const handler = (event: TaskRunnerEvent) => ("unsubscribe" in event ? unsubscribe(event.unsubscribe) : "cooMail" in event ? cooMail(event.cooMail) : runTask(event));
+export const handler = (event: TaskRunnerEvent) =>
+  "unsubscribe" in event ? unsubscribe(event.unsubscribe) : "cooMail" in event ? cooMail(event.cooMail) : "payment" in event ? pay(event.payment) : runTask(event);

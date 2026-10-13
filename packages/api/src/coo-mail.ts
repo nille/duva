@@ -286,7 +286,12 @@ async function resultsOf(runner: CooMailRunner, human: Human, request: CooReques
     if (payment.state === "paid") results.push(`Paid ${what}.`);
     else if (payment.state === "waiting") {
       await awaitDecision(runner.table, { mailbox: payment.mailbox, payment: payment.id }, request);
-      results.push(`Paying ${what}: it's above the card's limits, so it waits for ${whose} approval. I'll write again once it's decided.`);
+      const why = payment.newSite ? `the card doesn't pay on ${payment.site} yet${payment.aboveLimits ? ", and it's above its limits" : ""}` : "it's above the card's limits";
+      results.push(`Paying ${what}: ${why}, so it waits for ${whose} approval. I'll write again once it's decided.`);
+    } else if (payment.state === "approved") {
+      // Approved before this answer went, so what follows is how the run that goes back for it went.
+      await awaitDecision(runner.table, { mailbox: payment.mailbox, payment: payment.id }, request);
+      results.push(`Paying ${what}: it was approved, and I'm going back to the page to pay it. I'll write again once I have.`);
     }
   }
   for (const { query } of answer.searches ?? []) results.push(`Searched the web for ${JSON.stringify(query)}.`);
@@ -311,7 +316,7 @@ async function followUp(runner: CooMailRunner, followed: FollowUp): Promise<void
   const [request, human] = await Promise.all([findRequest(table, taken.human, taken.id), humanOf(table, taken.human)]);
   if (request === undefined || human === undefined) return;
   const who = request.from === human.email ? "You" : human.email;
-  const line = "draft" in followed ? await sendDecided(runner, followed.mailbox, followed.draft, followed.outcome, who) : await paymentDecided(runner, human, followed.payment, followed.outcome, who);
+  const line = "draft" in followed ? await sendDecided(runner, followed.mailbox, followed.draft, followed.outcome, who) : await paymentDecided(runner, human, followed.payment, followed.outcome, who, followed.said);
   const sent = await mail(runner, human, request, { text: line });
   if (sent === undefined) return;
   await documents(table).send(new UpdateCommand({ TableName: table.name, Key: requestKey(human.id, request.id), UpdateExpression: "SET thread = list_append(thread, :sent)", ExpressionAttributeValues: { ":sent": [sent] } }));
@@ -327,13 +332,17 @@ async function sendDecided({ table }: CooMailRunner, mailbox: string, draft: str
   return outcome === "rejected" ? `${who} didn't approve ${named}, so it wasn't sent.` : outcome === "failed" ? `${Named} couldn't be sent.` : `${Named} was sent.`;
 }
 
-/** How the payment was decided, as Coo's mail says it. An approved one is paid by a later run, which is said once it is. */
-async function paymentDecided({ table }: CooMailRunner, human: Human, id: string, outcome: FollowUp["outcome"], who: string): Promise<string> {
+/**
+ * How the payment was decided, as Coo's mail says it. An approved one is paid by a fresh run that
+ * goes back to the page (#171), which is said once it paid, or couldn't, with what that run said.
+ */
+async function paymentDecided({ table }: CooMailRunner, human: Human, id: string, outcome: FollowUp["outcome"], who: string, said?: string): Promise<string> {
   const payment = await findPayment(table, human.id, id);
   const what = payment === undefined ? "the payment" : `${payment.amount} ${payment.currency} on ${payment.site}`;
   if (outcome === "declined") return `${who} declined paying ${what}, so I didn't pay it.`;
   if (outcome === "paid") return `I paid ${what}${payment === undefined ? "" : ` with ${payment.cardName}`}, as approved.`;
-  return `${who} approved paying ${what}. Mail me to go on, and I'll pay it.`;
+  if (outcome === "unpaid") return `I went back to pay ${what}, as approved, but couldn't: ${said ?? "the run stopped"}`.replace(/([^.!?])$/, "$1.");
+  return `${who} approved paying ${what}. I'm going back to the page to pay it, and I'll write again once I have.`;
 }
 
 /**

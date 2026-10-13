@@ -49,6 +49,8 @@ const login = { kind: "login" as const, name: "Example Shop", username: "linus.t
 const membership = { kind: "other" as const, name: "Membership", value: "SJ-4471-2209" };
 const visa = { kind: "card" as const, name: "Visa", number: "4242 4242 4242 4242", expiry: "12/29", cvc: "123", cardholder: "Linus Torvalds" };
 const limits = { currency: "SEK", perPayment: "100.00", perMonth: "150.00" };
+/** The site the shop is under, which a card names to pay there, and on its subdomains. */
+const onTheShop = { sites: ["example.net"] };
 /** Every value of the secrets above, none of which may reach a model, a turn, a change or a log. */
 const values = [login.username, login.password, "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", seedsCode, membership.value, "4242424242424242", "4242 4242 4242 4242", "12/29", "123", "Linus Torvalds"];
 
@@ -78,7 +80,7 @@ afterEach(() => void (logged.length = 0));
 /**
  * A deployment on example.com where Linus has the mailbox linus@example.com, and shop.example.net
  * is a shop with a login and a one-time code, a membership form that says back what it saved, and a
- * checkout that takes a card and pays on "Pay now".
+ * checkout that takes a card and pays on "Pay now", until a test has it expire.
  */
 async function withShop(options: DuvaOptions = {}) {
   const duva = await startDuva({ domain: "example.com", admin: "ada@example.org", humans: ["linus@example.org", "grace@example.org"], ...options });
@@ -89,6 +91,7 @@ async function withShop(options: DuvaOptions = {}) {
   const params = { path: { mailbox: mailbox!.id } };
   await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-sonnet-5-5", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5" } });
   const agent = (await linus.GET("/mailbox-agent")).data!.agent;
+  const checkout = { expired: false };
   const shop = async (request: ReceivedRequest) => {
     const { pathname } = new URL(request.url);
     const fields = new URLSearchParams(request.body);
@@ -98,6 +101,7 @@ async function withShop(options: DuvaOptions = {}) {
     if (pathname === "/verify") return fields.get("code") === seedsCode ? new Response(null, { status: 303, headers: { location: "/account", "set-cookie": "session=s3cret; Path=/" } }) : html("<p>Wrong code.</p>");
     if (pathname === "/account") return signedIn ? html(`<h1>Your account</h1>${form("/membership", field("member", "Membership number"), "Save")}`) : html("<p>Sign in first.</p>");
     if (pathname === "/membership") return html(`<p>Saved. Your membership number is ${fields.get("member")}.</p>`);
+    if (pathname === "/checkout" && checkout.expired) return html("<p>This checkout has expired. Start again from your cart.</p>");
     if (pathname === "/checkout") return html(`<p>Coffee beans, 1 kg. Total: 49.90 SEK</p>${form("/pay", field("number", "Card number", 'autocomplete="cc-number"') + field("exp", "Expiry", 'autocomplete="cc-exp"') + field("cvc", "CVC", 'autocomplete="cc-csc"'), "Pay now")}`);
     if (pathname === "/pay") return html(`<p>Paid with the card ${fields.get("number")?.replace(/(\d{4})(?=\d)/g, "$1 ")}. Thank you!</p>`);
     return html("<p>Not found.</p>");
@@ -106,7 +110,7 @@ async function withShop(options: DuvaOptions = {}) {
   const ask = (words: string) => duva.askAgent("linus@example.org", { mailbox: mailbox!.id, words });
   const keep = async (secret: Record<string, unknown>) => (await linus.POST("/secrets", { body: secret as never })).data!;
   const events = async (kinds?: ("payments" | "conversations")[]) => (await linus.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query: kinds === undefined ? {} : { kinds } } })).data!.events;
-  return { duva, ada, linus, params, agent, ask, keep, events, requests, linusId: linusActor!.id };
+  return { duva, ada, linus, params, agent, ask, keep, events, requests, checkout, linusId: linusActor!.id };
 }
 
 const posts = (requests: ReceivedRequest[]) => requests.filter(({ method }) => method === "POST").map(({ url, body }) => `${new URL(url).pathname} ${body}`);
@@ -278,11 +282,11 @@ const paysWithTheCard = (amount = "49.90") => [
   () => [use("finish", { done: true, said: "It paid 49.90 SEK for the coffee beans." })],
 ];
 
-test("a card pays within its limits: Duva types it into the checkout, the month counts it, and the payment shows in Coo's activity with its amount and site, and in its history", async () => {
+test("a card pays on its site, and its subdomains, within its limits: Duva types it into the checkout, the month counts it, and the payment shows in Coo's activity with its amount and site, and in its history", async () => {
   const { model, pages, requests: modelRequests } = scripted({ coo: buysTheBeans(), page: paysWithTheCard() });
   const shop = await withShop({ model });
   const { linus, ask, keep, events, requests } = shop;
-  const card = await keep({ ...visa, ...limits });
+  const card = await keep({ ...visa, ...limits, ...onTheShop });
 
   await ask("Buy the coffee beans in my cart at Example Shop.");
 
@@ -302,24 +306,31 @@ test("a card pays within its limits: Duva types it into the checkout, the month 
   holdsNone({ "model requests": JSON.stringify(modelRequests), "what Duva kept": kept, logs: logged.join("\n") });
 });
 
-test("a payment above the card's limits stops the run and waits in Approvals with its site, amount, card and what it is for, and once approved, a fresh run pays it", async () => {
-  const { model, coo } = scripted({ coo: [...buysTheBeans(), ...buysTheBeans()], page: [...paysWithTheCard("149.00").slice(0, 1), ...paysWithTheCard("149.00")] });
-  const { linus, ask, keep, events, requests } = await withShop({ model });
-  await keep({ ...visa, ...limits });
+test("a payment above the card's limits stops the run and waits in Approvals with its site, amount, card and what it is for, and approving it has a fresh run go back to the page and pay it, with no one asking Coo again", async () => {
+  const { model, coo, pages, requests: modelRequests } = scripted({ coo: buysTheBeans(), page: [...paysWithTheCard("149.00").slice(0, 1), ...paysWithTheCard("149.00")] });
+  const shop = await withShop({ model });
+  const { linus, ask, keep, events, requests } = shop;
+  await keep({ ...visa, ...limits, ...onTheShop });
 
   await ask("Buy the coffee beans in my cart at Example Shop.");
   const { data: waiting } = await linus.GET("/payments");
+  const before = posts(requests);
   const approved = await linus.POST("/payments/{payment}/approve", { params: { path: { payment: waiting!.payments[0]!.id } } });
   const again = await linus.POST("/payments/{payment}/decline", { params: { path: { payment: waiting!.payments[0]!.id } } });
-  const before = posts(requests);
-  await ask("I approved it. Buy them now.");
 
   expect(lastResult(coo()[1]!.messages)).toBe("Not done: The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for linus@example.org's approval in Approvals.");
   expect(before).toEqual([]);
-  expect(waiting!.payments).toEqual([expect.objectContaining({ state: "waiting", cardName: "Visa", site: "example.net", amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg" })]);
+  expect(waiting!.payments).toEqual([expect.objectContaining({ state: "waiting", cardName: "Visa", site: "example.net", amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg", aboveLimits: true })]);
+  expect(waiting!.payments[0]!.newSite).toBeUndefined();
   expect(approved.data).toMatchObject({ state: "approved", decidedAt: expect.any(String) });
   expect(again.response.status).toBe(409);
+  // Coo was asked once, and the fresh run went back to the checkout and paid, told what was approved and the goal it paid for.
+  expect(coo()).toHaveLength(2);
   expect(posts(requests)).toEqual(["/pay number=4242424242424242&exp=12%2F29&cvc=123"]);
+  expect(pages()[1]!.messages[0]!.content[0]).toMatchObject({ text: expect.stringContaining("URL: https://shop.example.net/checkout") });
+  expect(pages()[1]!.system).toContain(
+    "linus@example.org approved paying 149.00 SEK with Visa, for Coffee beans, 1 kg, which waited for them: pay it on this page, and nothing more. Give fillSecret the amount the page asks now: if it isn't 149.00 SEK, Duva has the new one wait for approval. The goal it was paying for: Buy the coffee beans in the cart.",
+  );
   expect((await linus.GET("/payments")).data!.payments).toEqual([expect.objectContaining({ state: "paid", amount: "149.00", paidAt: expect.any(String) })]);
   const activity = await events(["payments"]);
   expect(activity.map(({ summary, needsYou }) => ({ summary, needsYou }))).toEqual([
@@ -327,12 +338,152 @@ test("a payment above the card's limits stops the run and waits in Approvals wit
     { summary: "You approved Coo's payment of 149.00 SEK on example.net.", needsYou: false },
     { summary: "Coo asked for approval to pay 149.00 SEK on example.net with Visa, for Coffee beans, 1 kg, above the card's limits.", needsYou: false },
   ]);
+  holdsNone({ "model requests": JSON.stringify(modelRequests), "what Duva kept": await everythingKept(shop), logs: logged.join("\n") });
+});
+
+/** SJ's checkout, as sj.se serves it and a look-alike copies it, saying it is on sj.se, which takes a card and pays on "Pay now". */
+const sjCheckout = ({ url }: ReceivedRequest) =>
+  new URL(url).pathname === "/pay"
+    ? html("<p>Paid. Have a good trip!</p>")
+    : html(
+        `<h1>SJ</h1><p>You are on sj.se, the official site of SJ. Stockholm to Göteborg, 1 adult. Total: 49.90 SEK</p>${form("/pay", field("number", "Card number", 'autocomplete="cc-number"') + field("exp", "Expiry", 'autocomplete="cc-exp"') + field("cvc", "CVC", 'autocomplete="cc-csc"'), "Pay now")}`,
+      );
+
+test("a card pays on the site it names, and never goes into a look-alike's page, by the address the browser reports, whatever the page says: there the payment waits in Approvals with the site named", async () => {
+  const buys = (url: string) => [() => [use("browse", { url, goal: "Buy the train ticket to Göteborg.", secrets: ["Visa"] })], () => [{ text: "Done." }]];
+  const fill = (element: number, part: string) => () => [use("fillSecret", { element, secret: "Visa", part, amount: "49.90", currency: "SEK", for: "Train ticket to Göteborg" })];
+  const { model, coo } = scripted({
+    coo: [...buys("https://www.sj.se/checkout"), ...buys("https://sj-se.example/checkout")],
+    page: [fill(1, "number"), fill(2, "expiry"), fill(3, "cvc"), () => [use("click", { element: 4 })], () => [use("finish", { done: true, said: "It bought the ticket." })], fill(1, "number")],
+  });
+  const { duva, linus, ask, keep, events } = await withShop({ model });
+  const sj = await duva.webServer("www.sj.se", { answer: sjCheckout });
+  const lookAlike = await duva.webServer("sj-se.example", { answer: sjCheckout });
+  const card = await keep({ ...visa, ...limits, sites: ["sj.se"] });
+
+  await ask("Buy my train ticket to Göteborg.");
+  await ask("Buy another one, from this link I got in the mail.");
+
+  expect(posts(sj)).toEqual(["/pay number=4242424242424242&exp=12%2F29&cvc=123"]);
+  expect(lastResult(coo()[3]!.messages)).toBe("Not done: Visa doesn't pay on sj-se.example yet, so the payment of 49.90 SEK waits for linus@example.org's approval in Approvals.");
+  expect(posts(lookAlike)).toEqual([]);
+  expect((await linus.GET("/payments")).data!.payments).toEqual([
+    expect.objectContaining({ state: "waiting", site: "sj-se.example", amount: "49.90", newSite: true }),
+    expect.objectContaining({ state: "paid", site: "sj.se", amount: "49.90" }),
+  ]);
+  expect((await events(["payments"]))[0]).toMatchObject({
+    summary: "Coo asked for approval to pay 49.90 SEK on sj-se.example with Visa, for Train ticket to Göteborg, a site the card doesn't pay on yet.",
+    needsYou: true,
+  });
+  const { data: read } = await linus.GET("/secrets/{secret}", { params: { path: { secret: card.id } } });
+  expect(read!.sites).toEqual(["sj.se"]);
+  expect(read!.uses.map(({ kind, part, site }) => `${kind} ${part} ${site}`)).toEqual(["waited number sj-se.example", "filled cvc sj.se", "filled expiry sj.se", "paid number sj.se"]);
+});
+
+test("each part of a card goes only into pages on its sites, so a run that paid on one can't type the card's code into another page of the same domain", async () => {
+  const { model, pages } = scripted({
+    coo: buysTheBeans(),
+    page: [...paysWithTheCard().slice(0, 1), () => [use("open", { url: "https://pay.example.net/checkout" })], () => [use("fillSecret", { element: 3, secret: "Visa", part: "cvc", amount: "49.90", currency: "SEK", for: "Coffee beans, 1 kg" })]],
+  });
+  const { duva, ask, keep } = await withShop({ model });
+  const elsewhere = await duva.webServer("pay.example.net", { answer: sjCheckout });
+  await keep({ ...visa, ...limits, sites: ["shop.example.net"] });
+
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+
+  expect(lastResult(pages()[3]!.messages)).toBe("Visa goes only into pages on its sites, and pay.example.net isn't on one. Type it only on the page where its number went in.");
+  expect(posts(elsewhere)).toEqual([]);
+});
+
+test("a card with no sites pays nowhere on its own, and approving a payment on a new site adds the site to the card, has a fresh run pay it there, and lets the card pay there on its own after", async () => {
+  const { model, coo } = scripted({ coo: [...buysTheBeans(), ...buysTheBeans()], page: [...paysWithTheCard().slice(0, 1), ...paysWithTheCard(), ...paysWithTheCard()] });
+  const { linus, ask, keep, events, requests } = await withShop({ model });
+  const card = await keep({ ...visa, ...limits });
+
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  const { data: waiting } = await linus.GET("/payments");
+  await linus.POST("/payments/{payment}/approve", { params: { path: { payment: waiting!.payments[0]!.id } } });
+  const sites = (await linus.GET("/secrets/{secret}", { params: { path: { secret: card.id } } })).data!.sites;
+  await ask("Buy another bag.");
+
+  expect(lastResult(coo()[1]!.messages)).toBe("Not done: Visa doesn't pay on example.net yet, so the payment of 49.90 SEK waits for linus@example.org's approval in Approvals.");
+  expect(waiting!.payments).toEqual([expect.objectContaining({ state: "waiting", site: "example.net", amount: "49.90", newSite: true })]);
+  expect(waiting!.payments[0]!.aboveLimits).toBeUndefined();
+  expect(sites).toEqual(["example.net"]);
+  expect(posts(requests)).toHaveLength(2);
+  expect((await linus.GET("/payments")).data!.payments.map(({ state }) => state)).toEqual(["paid", "paid"]);
+  expect((await events(["payments"])).map(({ summary }) => summary)).toEqual([
+    "Coo paid 49.90 SEK on example.net with Visa, for Coffee beans, 1 kg.",
+    "Coo paid 49.90 SEK on example.net with Visa, as approved, for Coffee beans, 1 kg.",
+    "You approved Coo's payment of 49.90 SEK on example.net, and added the site to the card.",
+    "Coo asked for approval to pay 49.90 SEK on example.net with Visa, for Coffee beans, 1 kg, a site the card doesn't pay on yet.",
+  ]);
+});
+
+test("a payment approved after its page expired isn't paid: the fresh run says so in Coo's activity, the payment stays approved, and a later run asked to pay it pays it", async () => {
+  const { model } = scripted({
+    coo: [...buysTheBeans(), ...buysTheBeans()],
+    page: [...paysWithTheCard("149.00").slice(0, 1), () => [use("finish", { done: false, said: "The checkout had expired, so it couldn't pay." })], ...paysWithTheCard("149.00")],
+  });
+  const { linus, params, ask, keep, events, requests, checkout } = await withShop({ model });
+  await keep({ ...visa, ...limits, ...onTheShop });
+
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  const { data: waiting } = await linus.GET("/payments");
+  checkout.expired = true;
+  await linus.POST("/payments/{payment}/approve", { params: { path: { payment: waiting!.payments[0]!.id } } });
+  const after = { payments: (await linus.GET("/payments")).data!.payments, activity: await events(["payments"]), changes: (await linus.GET("/mailboxes/{mailbox}/changes", { params })).data!.changes };
+  checkout.expired = false;
+  await ask("Buy them now.");
+
+  expect(after.payments.map(({ state }) => state)).toEqual(["approved"]);
+  expect(after.activity[0]).toMatchObject({ type: "paymentNotMade", summary: "Coo went back to pay 149.00 SEK on example.net with Visa, as approved, and couldn't: The checkout had expired, so it couldn't pay.", failed: true });
+  // The bubble reads the change from the mailbox's feed.
+  expect(after.changes.at(-1)).toMatchObject({ type: "paymentNotMade", amount: "149.00", currency: "SEK", site: "example.net", said: "The checkout had expired, so it couldn't pay." });
+  expect(posts(requests)).toEqual(["/pay number=4242424242424242&exp=12%2F29&cvc=123"]);
+  expect((await linus.GET("/payments")).data!.payments.map(({ state }) => state)).toEqual(["paid"]);
+});
+
+test("a card's sites are given with it, added and removed, each as its domain or a page's address there, never an ending anyone's site is under", async () => {
+  const { linus, keep } = await withShop();
+  const card = await keep({ ...visa, sites: ["https://www.SJ.se/biljetter", "netflix.com", "netflix.com"] });
+  const path = { path: { secret: card.id } };
+  const add = (site: string) => linus.POST("/secrets/{secret}/sites", { params: path, body: { site } });
+
+  const added = await add("tickets.example.co.uk");
+  const again = await add("Netflix.com");
+  const refused = await Promise.all(["co.uk", "github.io", "192.0.2.1"].map(add));
+  const removed = await linus.DELETE("/secrets/{secret}/sites/{site}", { params: { path: { secret: card.id, site: "www.sj.se" } } });
+  const login = await linus.POST("/secrets", { body: { kind: "login", name: "SJ login", username: "linus", password: "x", sites: ["sj.se"] } });
+  const patched = await linus.PATCH("/secrets/{secret}", { params: path, body: { sites: ["sj.se"] } as never });
+
+  expect(card.sites).toEqual(["www.sj.se", "netflix.com"]);
+  expect(added.data!.sites).toEqual(["www.sj.se", "netflix.com", "tickets.example.co.uk"]);
+  expect(again.data!.sites).toEqual(["www.sj.se", "netflix.com", "tickets.example.co.uk"]);
+  expect(refused.map(({ response }) => response.status)).toEqual([400, 400, 400]);
+  expect((refused[0]!.error as { message: string }).message).toBe(`"co.uk" isn't a site a card can pay on. Give each as its domain, as sj.se. An ending anyone's site is under, as co.uk, isn't one.`);
+  expect(removed.data!.sites).toEqual(["netflix.com", "tickets.example.co.uk"]);
+  expect((login.error as { message: string }).message).toBe("Only a card names the sites it pays on. Leave sites out for a login or another value.");
+  expect(patched.response.status).toBe(400);
+  expect((await linus.GET("/secrets")).data!.secrets.map(({ name, sites }) => ({ name, sites }))).toEqual([{ name: "Visa", sites: ["netflix.com", "tickets.example.co.uk"] }]);
+});
+
+test("a card never goes into a page served over plain http, even on its site", async () => {
+  const { model, coo } = scripted({ coo: [() => [use("browse", { url: "http://shop.example.net/checkout", goal: "Buy the coffee beans in the cart.", secrets: ["Visa"] })]], page: paysWithTheCard().slice(0, 1) });
+  const { ask, keep, linus, requests } = await withShop({ model });
+  await keep({ ...visa, ...limits, ...onTheShop });
+
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+
+  expect(lastResult(coo()[1]!.messages)).toMatch(/^Not done: /);
+  expect(posts(requests)).toEqual([]);
+  expect((await linus.GET("/payments")).data!.payments).toEqual([]);
 });
 
 test("a payment that would take the card past its month waits too, and while it waits, it needs its human in Coo's activity", async () => {
   const { model } = scripted({ coo: [...buysTheBeans(), ...buysTheBeans(), ...buysTheBeans()], page: [...paysWithTheCard("60.00"), ...paysWithTheCard("60.00"), ...paysWithTheCard("60.00").slice(0, 1)] });
   const { linus, ask, keep, events, requests } = await withShop({ model });
-  await keep({ ...visa, ...limits });
+  await keep({ ...visa, ...limits, ...onTheShop });
 
   for (const words of ["Buy the beans.", "Buy them again.", "And once more."]) await ask(words);
 
@@ -366,7 +517,7 @@ test("a run of the same turn again, as Think harder, never pays twice, and a run
     page: [...paysWithTheCard(), ...paysWithTheCard().slice(0, 1)],
   });
   const { duva, ask, keep, requests } = await withShop({ model });
-  await keep({ ...visa, ...limits });
+  await keep({ ...visa, ...limits, ...onTheShop });
 
   await ask("Buy the beans.");
   await duva.askAgent("linus@example.org", { harder: true });
@@ -381,7 +532,7 @@ test("a run of the same turn again, as Think harder, never pays twice, and a run
 test("removing a human erases their secrets and their Coo's payments with them", async () => {
   const { model } = scripted({ coo: buysTheBeans(), page: paysWithTheCard() });
   const { duva, ada, linus, ask, keep, params, linusId } = await withShop({ model });
-  const card = await keep({ ...visa, ...limits });
+  const card = await keep({ ...visa, ...limits, ...onTheShop });
   await ask("Buy the beans.");
   const before = [(await linus.GET("/secrets")).data!.secrets.length, (await linus.GET("/payments")).data!.payments.length];
 
@@ -401,7 +552,7 @@ test("a run whose card paid once on a site needs the card again to pay a second 
     page: [...paysWithTheCard().slice(0, 4), () => [use("open", { url: "https://shop.example.net/checkout" })], () => [use("click", { element: 4 })]],
   });
   const { ask, keep, requests } = await withShop({ model });
-  await keep({ ...visa, ...limits });
+  await keep({ ...visa, ...limits, ...onTheShop });
 
   await ask("Buy the coffee beans in my cart at Example Shop.");
 

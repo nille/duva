@@ -1398,7 +1398,7 @@ export interface paths {
         put?: never;
         /**
          * Keep a secret for your Coo to use, a login, a card or another value, under a name you give it.
-         * @description Give kind and name, and the parts of its kind: a login's username and password, and its totpSeed if the site asks for a one-time code, a card's number, expiry, cvc and cardholder, or another value's value. Each value is encrypted with a KMS key of the deployment's own, in its region. A card pays only within the limits you set on it, with currency, perPayment and perMonth: until then it doesn't pay. Names are your own, each used once. Only humans keep secrets, at most 100.
+         * @description Give kind and name, and the parts of its kind: a login's username and password, and its totpSeed if the site asks for a one-time code, a card's number, expiry, cvc and cardholder, or another value's value. Each value is encrypted with a KMS key of the deployment's own, in its region. A card pays only within the limits you set on it, with currency, perPayment and perMonth: until then it doesn't pay. It pays on its own only on the sites you name with sites, such as sj.se, and their subdomains, by the address the browser reports for the page: a payment on any other site waits for your approval. Names are your own, each used once. Only humans keep secrets, at most 100.
          */
         post: operations["addSecret"];
         delete?: never;
@@ -1430,7 +1430,7 @@ export interface paths {
         head?: never;
         /**
          * Rename a secret, replace its parts, or set a card's limits.
-         * @description Give name to rename it. Give any of its kind's parts to replace them, each as a whole: a part you leave out stays as it was. For a card, give currency, perPayment and perMonth together to set its limits, or null for each to clear them, after which it doesn't pay. A secret's kind stays what it was.
+         * @description Give name to rename it. Give any of its kind's parts to replace them, each as a whole: a part you leave out stays as it was. For a card, give currency, perPayment and perMonth together to set its limits, or null for each to clear them, after which it doesn't pay. Add and remove a card's sites with their own operations. A secret's kind stays what it was.
          */
         patch: operations["changeSecret"];
         trace?: never;
@@ -1455,6 +1455,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/secrets/{secret}/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a site a card pays on.
+         * @description Give site as its domain, such as sj.se, or the address of a page there. The card then pays on it and its subdomains on its own, within its limits, by the address the browser reports for the page. An ending anyone's site is under, such as co.uk, isn't a site. A card names at most 20. Adding one it names already changes nothing.
+         */
+        post: operations["addCardSite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/secrets/{secret}/sites/{site}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a site a card pays on.
+         * @description From then on, each of its payments there waits for your approval, as on any site it doesn't name. Removing one it doesn't name changes nothing.
+         */
+        delete: operations["removeCardSite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/secrets/{secret}/use": {
         parameters: {
             query?: never;
@@ -1466,7 +1506,7 @@ export interface paths {
         put?: never;
         /**
          * Answer a part of a secret for a browsing run of your human's Coo to type into a page.
-         * @description Only a browsing run of a human's own Coo can call it, with its run's token, which never reaches the model: Duva types what it answers into the page, outside the model. Each use is recorded in the secret's history, with the site and the run. A login's code part is the one-time code its seed gives now. A card's parts need the amount and currency of the payment: it pays only within the card's per-payment and per-month limits, while the organization lets mailbox agents pay. Above a limit, the payment waits in its human's Approvals, which is 202, and a fresh run pays once they approve it. A run that already paid on the site with the card, then ran again, is 409, so a retry never pays twice.
+         * @description Only a browsing run of a human's own Coo can call it, with its run's token, which never reaches the model: Duva types what it answers into the page, outside the model. Each use is recorded in the secret's history, with the site and the run. A login's code part is the one-time code its seed gives now. A card's parts need the amount and currency of the payment, and the page's address as the browser reports it: it pays only on the card's sites, within its per-payment and per-month limits, while the organization lets mailbox agents pay. On another site, or above a limit, the payment waits in its human's Approvals, which is 202, keeping the page and what the run was given, and once they approve it, a fresh run goes back to the page and pays. A run that already paid on the site with the card, then ran again, is 409, so a retry never pays twice.
          */
         post: operations["useSecret"];
         delete?: never;
@@ -2400,7 +2440,7 @@ export interface paths {
         };
         /**
          * List your Coo's payments, newest first, those waiting for your approval among them.
-         * @description Coo pays with one of your cards on its own only within the limits you set on it. A payment above them waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.
+         * @description Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.
          */
         get: operations["listPayments"];
         put?: never;
@@ -2421,8 +2461,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Approve a payment waiting for you, so Coo's next run on the site pays it.
-         * @description The next browsing run that pays its amount on the site with the card pays it, outside the card's limits, once: ask Coo again for that. It still counts toward the card's month. Recorded in the mailbox's change feed under you.
+         * Approve a payment waiting for you, so Coo goes back to the page and pays it.
+         * @description A fresh browsing run of your Coo's goes back to the page where the payment waited and pays it, outside the card's limits, once, as would any later run that pays its amount on the site with the card. It still counts toward the card's month. A payment on a site the card didn't name adds the site to the card, so it pays there from then on. If the run can't pay, as when the page expired, Coo's activity says why. Recorded in the mailbox's change feed under you.
          */
         post: operations["approvePayment"];
         delete?: never;
@@ -3096,7 +3136,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailToCoo"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"] | components["schemas"]["SignatureChanged"] | components["schemas"]["PaymentMade"] | components["schemas"]["PaymentAsked"] | components["schemas"]["PaymentDecided"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailToCoo"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"] | components["schemas"]["SignatureChanged"] | components["schemas"]["PaymentMade"] | components["schemas"]["PaymentAsked"] | components["schemas"]["PaymentDecided"] | components["schemas"]["PaymentNotMade"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -3643,10 +3683,10 @@ export interface components {
             /** @description With followedUp, the ID of the payment that waited. */
             payment?: string;
             /**
-             * @description With followedUp, how what waited was decided: a send sent, rejected, or failed, or a payment approved, declined, or paid once a later run paid it.
+             * @description With followedUp, how what waited was decided: a send sent, rejected, or failed, or a payment approved, declined, paid once a later run paid it, or unpaid, when the run that went back to pay it couldn't.
              * @enum {string}
              */
-            outcome?: "sent" | "rejected" | "failed" | "approved" | "declined" | "paid";
+            outcome?: "sent" | "rejected" | "failed" | "approved" | "declined" | "paid" | "unpaid";
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -5684,7 +5724,7 @@ export interface components {
          */
         SearchLanguage: "English" | "Swedish" | "Danish";
         /**
-         * @description What an event is about. conversations, turns of Ask Coo; tasks, the tasks labels' prompts give a mailbox agent, from the prompt to its end; draftsAndSends, drafts, sends and what SES reported about them; approvals, asking for approval and the sponsor's decisions; payments, a mailbox agent's payments, those waiting for approval and its human's decisions on them; organizing, marking threads read or unread, labels, Remind me and erasing; screening, the Screener and where senders' mail goes; unsubscribes, each try to unsubscribe from a sender's mail; pausesAndLimits, pauses, settings and send limits, and sends waiting for them; alerts, the alerts about the agent its sponsor got; setup, the agent's creation and removal, its key and the organization's setup it made.
+         * @description What an event is about. conversations, turns of Ask Coo; tasks, the tasks labels' prompts give a mailbox agent, from the prompt to its end; draftsAndSends, drafts, sends and what SES reported about them; approvals, asking for approval and the sponsor's decisions; payments, a mailbox agent's payments, those waiting for approval, its human's decisions on them and the runs that went back to pay; organizing, marking threads read or unread, labels, Remind me and erasing; screening, the Screener and where senders' mail goes; unsubscribes, each try to unsubscribe from a sender's mail; pausesAndLimits, pauses, settings and send limits, and sends waiting for them; alerts, the alerts about the agent its sponsor got; setup, the agent's creation and removal, its key and the organization's setup it made.
          * @enum {string}
          */
         AgentEventKind: "conversations" | "tasks" | "draftsAndSends" | "approvals" | "payments" | "organizing" | "screening" | "unsubscribes" | "pausesAndLimits" | "alerts" | "setup";
@@ -6084,11 +6124,13 @@ export interface components {
             oneTimeCodes?: true;
             /** @description A card's limits, when its human set them. A card without them doesn't pay. */
             limits?: components["schemas"]["CardLimits"];
+            /** @description For a card, the sites it pays on, each with its subdomains, by the address the browser reports for the page. A payment on any other site waits for its human's approval, and so does every payment of a card with none. */
+            sites?: string[];
             /** Format: date-time */
             addedAt: string;
             /**
              * Format: date-time
-             * @description When it was last renamed or replaced, or its limits changed, if it was.
+             * @description When it was last renamed or replaced, or its limits or sites changed, if it was.
              */
             changedAt?: string;
         };
@@ -6148,6 +6190,8 @@ export interface components {
             perPayment?: components["schemas"]["Amount"];
             /** @description The most a card pays in a month without your approval. */
             perMonth?: components["schemas"]["Amount"];
+            /** @description The sites a card pays on, each as a domain such as sj.se, or a page's address there, and their subdomains. Without them, each of its payments waits for your approval. */
+            sites?: string[];
         };
         SecretChanges: {
             /** @description Its new name. */
@@ -6167,6 +6211,13 @@ export interface components {
             perPayment?: components["schemas"]["Amount"] | null;
             /** @description The most the card pays in a month, or null with the others to clear the limits. */
             perMonth?: components["schemas"]["Amount"] | null;
+        };
+        CardSite: {
+            /**
+             * @description The site's domain, such as sj.se, or the address of a page there.
+             * @example sj.se
+             */
+            site: string;
         };
         RevealCode: {
             /** @description The sign-in code Duva mailed you. Leave it out to have one mailed. */
@@ -6200,6 +6251,14 @@ export interface components {
             currency?: components["schemas"]["Currency"];
             /** @description For a card, what the payment is for, in a few words. */
             for?: string;
+            /** @description For a card, the address of the page it goes into, as the browser reports it, on the site. The card pays only where its host is one of the card's sites or under one, and a payment that waits keeps it, for the fresh run that goes back once it is approved. */
+            page?: string;
+            /** @description For a card, the browsing run's goal, which a payment that waits keeps until it is decided, with values and secrets, so the fresh run that goes back to the page is given them again. */
+            goal?: string;
+            /** @description For a card, the values the browsing run may type. */
+            values?: string[];
+            /** @description For a card, the names of the secrets the browsing run may have typed in. */
+            secrets?: string[];
         };
         SecretPart: {
             /** @description The part, to type into the page and never show the model. */
@@ -6244,6 +6303,16 @@ export interface components {
             /** @description The ID of the mailbox whose change feed records it, as Coo's activity shows it. */
             mailbox: string;
             run: components["schemas"]["SecretRun"];
+            /**
+             * @description Present when it waited because the card doesn't name the site, so approving it adds the site to the card.
+             * @constant
+             */
+            newSite?: true;
+            /**
+             * @description Present when it waited because it was above the card's limits.
+             * @constant
+             */
+            aboveLimits?: true;
         };
         PaymentList: {
             payments: components["schemas"]["Payment"][];
@@ -6280,6 +6349,16 @@ export interface components {
             amount: components["schemas"]["Amount"];
             currency: components["schemas"]["Currency"];
             for: string;
+            /**
+             * @description Present when the card doesn't name the site.
+             * @constant
+             */
+            newSite?: true;
+            /**
+             * @description Present when it is above the card's limits.
+             * @constant
+             */
+            aboveLimits?: true;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -6296,6 +6375,11 @@ export interface components {
             site: string;
             amount: components["schemas"]["Amount"];
             currency: components["schemas"]["Currency"];
+            /**
+             * @description Present when approving added the site to the card, which it didn't name.
+             * @constant
+             */
+            siteAdded?: true;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -6303,7 +6387,26 @@ export interface components {
              */
             type: "paymentDecided";
         };
-        /** @description Whether the mailbox agents may pay with their humans' cards while they browse, each card only within the per-payment and per-month limits its human set, and above them only once its human approves. A card without limits never pays. On by default; off, no card pays. */
+        PaymentNotMade: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "paymentNotMade";
+            agent: string;
+            payment: string;
+            cardName: string;
+            site: string;
+            amount: components["schemas"]["Amount"];
+            currency: components["schemas"]["Currency"];
+            for: string;
+            /** @description Why, as the run said it, or why it couldn't run. */
+            said: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "paymentNotMade";
+        };
+        /** @description Whether the mailbox agents may pay with their humans' cards while they browse, each card only on its sites, within the per-payment and per-month limits its human set, and elsewhere or above them only once its human approves. A card without limits never pays. On by default; off, no card pays. */
         MailboxAgentPayments: boolean;
     };
     responses: {
@@ -6395,6 +6498,8 @@ export interface components {
         Memory: string;
         /** @description The secret's ID. */
         Secret: string;
+        /** @description The site, as the card names it, such as sj.se. */
+        CardSiteName: string;
         /** @description The payment's ID. */
         Payment: string;
     };
@@ -9085,6 +9190,67 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    addCardSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The secret's ID. */
+                secret: components["parameters"]["Secret"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardSite"];
+            };
+        };
+        responses: {
+            /** @description The card, with its sites. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeCardSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The secret's ID. */
+                secret: components["parameters"]["Secret"];
+                /** @description The site, as the card names it, such as sj.se. */
+                site: components["parameters"]["CardSiteName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card, with the sites it still pays on. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     useSecret: {

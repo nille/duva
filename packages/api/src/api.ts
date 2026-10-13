@@ -45,7 +45,7 @@ import { getDomainLogo, getMailboxLogo, removeDomainLogo, removeLogoCertificate,
 import { changePreferences, getPreferences } from "./preferences.ts";
 import { approvePayment, declinePayment, deleteSecret, listPayments } from "./payments.ts";
 import { useSecret } from "./secret-uses.ts";
-import { addSecret, changeSecret, getSecret, listSecrets, revealSecret } from "./secrets.ts";
+import { addCardSite, addSecret, changeSecret, getSecret, listSecrets, removeCardSite, revealSecret } from "./secrets.ts";
 import { suggest } from "./suggestions.ts";
 import { changeAwayMessage, getAwayMessage } from "./away-messages.ts";
 import { changeSignature, getSignature } from "./signatures.ts";
@@ -154,6 +154,8 @@ export const handlers: Record<OperationId, OperationHandler> = {
   addSecret,
   getSecret,
   changeSecret,
+  addCardSite,
+  removeCardSite,
   deleteSecret,
   revealSecret,
   useSecret,

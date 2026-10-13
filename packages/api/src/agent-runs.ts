@@ -53,13 +53,14 @@ export const noMailboxAgent = "You have no mailbox agent yet. Ask an admin to ru
 /**
  * The job a run does, which decides the model it starts with (ADR-0032): a conversation turn, with
  * the everyday model unless the decider finds it complex, a label's task, with the everyday model,
- * and with the harder model a turn its owner asked to think harder, or unsubscribing on a sender's
- * page. Each is the model the agent's human chose, or the organization's default (ADR-0035).
+ * and with the harder model a turn its owner asked to think harder, unsubscribing on a sender's
+ * page, or going back to pay a payment its human approved (#171). Each is the model the agent's
+ * human chose, or the organization's default (ADR-0035).
  */
-export type Job = "conversation" | "task" | "harder" | "unsubscribe";
+export type Job = "conversation" | "task" | "harder" | "unsubscribe" | "payment";
 
 /** What every run starts with, before what it is asked. */
-export type RunStart = Omit<RunPayload, "token" | "history" | "words" | "task" | "unsubscribe">;
+export type RunStart = Omit<RunPayload, "token" | "history" | "words" | "task" | "unsubscribe" | "payment">;
 
 /**
  * What a run of the agent in its owner's mailboxes starts with, asked from one of them or from All
@@ -100,7 +101,7 @@ export async function startRun(
     owner,
     access,
     approval: given.approvalAsSponsor,
-    model: { model: { conversation: everyday, task: everyday, harder, unsubscribe: harder }[job], everyday, harder, region },
+    model: { model: { conversation: everyday, task: everyday, harder, unsubscribe: harder, payment: harder }[job], everyday, harder, region },
     ...(settings.mailboxAgentWebSearch && searches && { webSearch: true }),
     // Unsubscribing browses in a fresh browser of its own, never its human's profile (ADR-0031).
     ...(settings.mailboxAgentBrowsing && browses && job !== "unsubscribe" && { browsing: { profile: profileName(agent.sponsor) }, ...(secrets.length > 0 && { secrets }) }),
@@ -124,7 +125,8 @@ export function capReached(table: Table, agent: Agent, month: string, cap: numbe
  * searches and browsing as they come, and returns what it said and did, an unsubscribe's verdict,
  * and how it ended. Each model call's, query's and browser session's cost is counted as it comes,
  * so a run cut off still counts what it spent, and a run that reaches the cap alerts the agent's sponsor.
- * A turn, named by the human's turn it answers, and a task, in `about`, may use its human's secrets.
+ * A turn, named by the human's turn it answers, and a task, in `about`, may use its human's secrets,
+ * as may a run that goes back to pay for either, as it.
  * `read` is given the IDs its tool calls took or returned and its memories named, as they come, so
  * a turn knows the threads it read before any is erased (#172).
  */

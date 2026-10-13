@@ -100,7 +100,8 @@ export function standInBrowser(network: Network) {
         return viewOf(page!);
       },
       // Keys typed land in the field as a script's value does here, since the stand-in runs no scripts.
-      async typeIn(index, value) {
+      async typeIn(index, value, origin) {
+        if (origin !== undefined && new URL(page!.url).origin !== origin) throw new Error(`The page left ${origin} before the value was typed.`);
         control(index).value = value;
         return viewOf(page!);
       },

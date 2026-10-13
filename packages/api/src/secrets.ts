@@ -5,11 +5,13 @@
 // doesn't open. Only the human reads a secret's name, kind and last four characters, and reveals a
 // value again only with a sign-in code just mailed to them. Coo's browsing run has a part typed
 // into a page through the browser, outside its model (secret-uses.ts), and every use is listed in
-// the secret's history.
+// the secret's history. A card pays only on the sites its human names for it (#171), by the
+// address the browser reports for the page, so a look-alike page never gets it.
 import { createHmac, randomUUID } from "node:crypto";
-import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
+import { getDomain } from "tldts";
 import type { Table } from "./deployment.ts";
 import { timeToLiveAttribute } from "./infrastructure.ts";
 import type { RunPayload } from "./agent-loop.ts";
@@ -35,11 +37,13 @@ const secretsKept = 100;
 const usesListed = 500;
 const longestName = 60;
 const longestPart = 1000;
+/** The most sites a card names. */
+const sitesNamed = 20;
 /** How long a sign-in code mailed for a reveal works, as long as Cognito's sign-in session lasts by default. */
 const revealWithin = 3 * 60_000;
 
 const secretPrefix = "secret#";
-const secretKey = (human: string, secret: string) => ({ [pk]: actorKey(human)[pk]!, [sk]: `${secretPrefix}${secret}` });
+export const secretKey = (human: string, secret: string) => ({ [pk]: actorKey(human)[pk]!, [sk]: `${secretPrefix}${secret}` });
 // Each name is taken once per human, case aside.
 const nameKey = (human: string, name: string) => ({ [pk]: actorKey(human)[pk]!, [sk]: `secret-name#${name.toLowerCase()}` });
 const usePrefix = (secret: string) => `secret-use#${secret}#`;
@@ -82,6 +86,8 @@ export interface StoredSecret {
   lastFour: string;
   oneTimeCodes?: true;
   limits?: Limits;
+  /** A card's sites, each a host it pays on with its subdomains. */
+  sites?: string[];
   addedAt: string;
   changedAt?: string;
   sealed: string;
@@ -121,7 +127,7 @@ export const isCurrency = (value: unknown): value is string => typeof value === 
 const lastFourOf = (value: string) => (value.length > 4 ? value.slice(-4) : "");
 
 /** What the secret's human sees of it, with what its card paid this month. */
-export function secretOf({ id, name, kind, lastFour, oneTimeCodes, limits, addedAt, changedAt }: StoredSecret, spentThisMonth = 0): Secret {
+export function secretOf({ id, name, kind, lastFour, oneTimeCodes, limits, sites, addedAt, changedAt }: StoredSecret, spentThisMonth = 0): Secret {
   return {
     id,
     name,
@@ -131,6 +137,7 @@ export function secretOf({ id, name, kind, lastFour, oneTimeCodes, limits, added
     ...(limits !== undefined && {
       limits: { currency: limits.currency, perPayment: amountOf(limits.perPayment), perMonth: amountOf(limits.perMonth), spentThisMonth: amountOf(spentThisMonth) },
     }),
+    ...(kind === "card" && { sites: [...new Set(sites ?? [])] }),
     addedAt,
     ...(changedAt !== undefined && { changedAt }),
   };
@@ -278,6 +285,43 @@ function limitsIn(kind: SecretKind, body: Record<string, unknown>): { limits: Li
   return { limits: { currency: body.currency, perPayment, perMonth } };
 }
 
+/**
+ * The site a card is given to pay on, as the host it names, from a domain or a page's address there,
+ * or undefined if it is neither, or is an ending anyone's site is under, as co.uk or github.io.
+ */
+export function siteIn(given: string): string | undefined {
+  const trimmed = given.trim().toLowerCase();
+  const url = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
+  if (trimmed === "" || !URL.canParse(url)) return undefined;
+  const host = new URL(url).hostname.replace(/\.$/, "");
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) return undefined;
+  return getDomain(host, { allowPrivateDomains: true }) === null ? undefined : host;
+}
+
+/** Whether the card pays on the host, as the browser reports a page's: one of its sites, or under one. */
+export const paysOn = (card: Pick<StoredSecret, "sites">, host: string) => {
+  const bare = host.toLowerCase().replace(/\.$/, "");
+  return (card.sites ?? []).some((site) => bare === site || bare.endsWith(`.${site}`));
+};
+
+const notASite = (given: unknown) => `${JSON.stringify(given)} isn't a site a card can pay on. Give each as its domain, as sj.se. An ending anyone's site is under, as co.uk, isn't one.`;
+const onlyCards = "Only a card names the sites it pays on. Leave sites out for a login or another value.";
+
+/** The sites the body gives a card it adds, or why they don't do. */
+function sitesIn(kind: SecretKind, body: Record<string, unknown>): { sites?: string[] } | { refused: string } {
+  const given = body.sites;
+  if (given === undefined) return {};
+  if (kind !== "card") return { refused: onlyCards };
+  if (!Array.isArray(given) || given.length > sitesNamed) return { refused: `Give sites as a list of at most ${sitesNamed}, each as its domain, as sj.se.` };
+  const sites: string[] = [];
+  for (const each of given) {
+    const site = typeof each === "string" ? siteIn(each) : undefined;
+    if (site === undefined) return { refused: notASite(each) };
+    if (!sites.includes(site)) sites.push(site);
+  }
+  return sites.length === 0 ? {} : { sites };
+}
+
 const lastFourOfParts = (kind: SecretKind, parts: Parts) => lastFourOf({ login: parts.username, card: parts.number, other: parts.value }[kind] ?? "");
 
 const nameIn = (body: Record<string, unknown>) => (typeof body.name === "string" ? body.name.trim() : undefined);
@@ -324,6 +368,8 @@ export const addSecret: OperationHandler = async (event, { table, secretKeys }, 
   if ("refused" in given) return refusal(400, given.refused);
   const limited = limitsIn(kind, body);
   if ("refused" in limited) return refusal(400, limited.refused);
+  const sited = sitesIn(kind, body);
+  if ("refused" in sited) return refusal(400, sited.refused);
   if ((await storedSecrets(table, human.id)).length >= secretsKept) return refusal(409, `You keep ${secretsKept} secrets, the most there can be. Delete one you no longer need first.`);
   const id = randomUUID();
   const stored: StoredSecret = {
@@ -334,6 +380,7 @@ export const addSecret: OperationHandler = async (event, { table, secretKeys }, 
     lastFour: lastFourOfParts(kind, given.parts),
     ...(given.parts.seed !== undefined && { oneTimeCodes: true }),
     ...(limited.limits && { limits: limited.limits }),
+    ...(sited.sites && { sites: sited.sites }),
     addedAt: new Date().toISOString(),
     sealed: await sealParts(secretKeys, { human: human.id, id }, given.parts),
   };
@@ -369,7 +416,7 @@ export const changeSecret: OperationHandler = async (event, { table, secretKeys 
   const body = jsonBody(event) ?? {};
   const known = ["name", ...Object.values(fieldsOf).flat(), ...limitFields];
   const unknown = Object.keys(body).find((field) => !known.includes(field));
-  if (unknown !== undefined) return refusal(400, `A secret has no ${unknown}. Give name, its kind's parts, or a card's limits.`);
+  if (unknown !== undefined) return refusal(400, `A secret has no ${unknown}. Give name, its kind's parts, or a card's limits. A card's sites are added and removed on their own.`);
   if (Object.keys(body).length === 0) return refusal(400, "Give name to rename it, its kind's parts to replace them, or a card's limits.");
   const name = nameIn(body);
   if (name !== undefined && (name === "" || name.length > longestName)) return nameRefused();
@@ -385,15 +432,17 @@ export const changeSecret: OperationHandler = async (event, { table, secretKeys 
   const limited = limitsIn(secret.kind, body);
   if ("refused" in limited) return refusal(400, limited.refused);
   const renamed = name !== undefined && name !== secret.name;
-  const { limits: _, ...unlimited } = secret;
+  // Limits given as null are cleared, and those not given stay.
+  const { limits: _, ...bare } = secret;
+  const limits = limited.limits === undefined ? secret.limits : (limited.limits ?? undefined);
   const changed: StoredSecret = {
-    ...(limited.limits === null ? unlimited : secret),
+    ...bare,
+    ...(limits !== undefined && { limits }),
     ...(renamed && { name }),
     ...(parts !== undefined && {
       lastFour: lastFourOfParts(secret.kind, parts),
       sealed: await sealParts(secretKeys, secret, parts),
     }),
-    ...(limited.limits && { limits: limited.limits }),
     changedAt: new Date().toISOString(),
   };
   if (parts !== undefined) {
@@ -404,8 +453,16 @@ export const changeSecret: OperationHandler = async (event, { table, secretKeys 
     await documents(table).send(
       new TransactWriteCommand({
         TransactItems: [
-          // It changes only as it was read, so two changes at once never mix.
-          { Put: { TableName: table.name, Item: { ...secretKey(human.id, secret.id), ...changed }, ConditionExpression: "sealed = :sealed AND #name = :name", ExpressionAttributeNames: { "#name": "name" }, ExpressionAttributeValues: { ":sealed": secret.sealed, ":name": secret.name } } },
+          // It changes only as it was read, so two changes at once never mix, nor does a site an approval added meanwhile go.
+          {
+            Put: {
+              TableName: table.name,
+              Item: { ...secretKey(human.id, secret.id), ...changed },
+              ConditionExpression: `sealed = :sealed AND #name = :name AND ${secret.changedAt === undefined ? "attribute_not_exists(changedAt)" : "changedAt = :changedAt"}`,
+              ExpressionAttributeNames: { "#name": "name" },
+              ExpressionAttributeValues: { ":sealed": secret.sealed, ":name": secret.name, ...(secret.changedAt !== undefined && { ":changedAt": secret.changedAt }) },
+            },
+          },
           ...(renamed
             ? [
                 { Put: { TableName: table.name, Item: { ...nameKey(human.id, name!), secret: secret.id }, ...isNew } },
@@ -422,6 +479,76 @@ export const changeSecret: OperationHandler = async (event, { table, secretKeys 
     throw error;
   }
   return { statusCode: 200, body: (await secretShown(table, changed)) satisfies Secret };
+};
+
+/** The card the call's path names, of the human's own, or a refusal. */
+async function cardAsked(event: Parameters<OperationHandler>[0], table: Table, actor: Actor | undefined): Promise<StoredSecret | ReturnType<typeof refusal>> {
+  const human = humanOf(actor);
+  if (human === undefined) return othersRefused();
+  const secret = await secretAsked(event, table, human);
+  if ("statusCode" in secret) return secret;
+  return secret.kind === "card" ? secret : refusal(400, onlyCards);
+}
+
+/** Adds a site the card pays on, after those it names, unless it names it already. */
+export const addCardSite: OperationHandler = async (event, { table }, actor) => {
+  const card = await cardAsked(event, table, actor);
+  if ("statusCode" in card) return card;
+  const given = (jsonBody(event) ?? {}).site;
+  const site = typeof given === "string" ? siteIn(given) : undefined;
+  if (site === undefined) return refusal(400, notASite(given));
+  if ((card.sites ?? []).includes(site)) return { statusCode: 200, body: (await secretShown(table, card)) satisfies Secret };
+  if ((card.sites ?? []).length >= sitesNamed) return refusal(409, `${card.name} names ${sitesNamed} sites, the most a card can. Remove one it no longer needs first.`);
+  try {
+    // Appended where it stands, so a site an approval added meanwhile stays.
+    const { Attributes } = await documents(table).send(
+      new UpdateCommand({
+        TableName: table.name,
+        Key: secretKey(card.human, card.id),
+        UpdateExpression: "SET sites = list_append(if_not_exists(sites, :none), :site), changedAt = :at",
+        ConditionExpression: `attribute_exists(${pk}) AND (attribute_not_exists(sites) OR NOT contains(sites, :one))`,
+        ExpressionAttributeValues: { ":none": [], ":site": [site], ":one": site, ":at": new Date().toISOString() },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return { statusCode: 200, body: (await secretShown(table, Attributes as StoredSecret)) satisfies Secret };
+  } catch (error) {
+    if (!(error instanceof ConditionalCheckFailedException)) throw error;
+    // Added meanwhile, or the card deleted.
+    const now = await findSecret(table, card.human, card.id);
+    return now === undefined ? refusal(404, "You have no such secret. List your secrets to find its ID.") : { statusCode: 200, body: (await secretShown(table, now)) satisfies Secret };
+  }
+};
+
+/** Removes a site the card pays on, each time it names it, unless it names it no more. */
+export const removeCardSite: OperationHandler = async (event, { table }, actor) => {
+  let card = await cardAsked(event, table, actor);
+  if ("statusCode" in card) return card;
+  const site = (event.pathParameters?.site ?? "").trim().toLowerCase();
+  // Removed where it stands, so a site an approval added meanwhile stays, trying again if the list moved.
+  for (let tries = 0; tries < 3; tries++) {
+    const at = (card.sites ?? []).flatMap((each, index) => (each === site ? [index] : []));
+    if (at.length === 0) break;
+    try {
+      const { Attributes } = await documents(table).send(
+        new UpdateCommand({
+          TableName: table.name,
+          Key: secretKey(card.human, card.id),
+          UpdateExpression: `REMOVE ${at.map((index) => `sites[${index}]`).join(", ")} SET changedAt = :at`,
+          ConditionExpression: at.map((index) => `sites[${index}] = :site`).join(" AND "),
+          ExpressionAttributeValues: { ":site": site, ":at": new Date().toISOString() },
+          ReturnValues: "ALL_NEW",
+        }),
+      );
+      return { statusCode: 200, body: (await secretShown(table, Attributes as StoredSecret)) satisfies Secret };
+    } catch (error) {
+      if (!(error instanceof ConditionalCheckFailedException)) throw error;
+      const now = await findSecret(table, card.human, card.id);
+      if (now === undefined) return refusal(404, "You have no such secret. List your secrets to find its ID.");
+      card = now;
+    }
+  }
+  return { statusCode: 200, body: (await secretShown(table, card)) satisfies Secret };
 };
 
 /** The items that go with a secret: its name, its history and its card's months. */

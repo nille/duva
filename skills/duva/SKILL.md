@@ -132,7 +132,7 @@ Give only the settings to change. A setting applies from when it changes, so tur
 - `--mailboxAgentDecider` or `--no-mailboxAgentDecider`: Whether the decider, Amazon Nova Micro, settles the model for each turn in Ask Coo and over MCP first, sending one it finds complex to the harder model. Off by default: on Coo's tasks it was right on 4 of 10 (docs/research/coo-models.md). Either way a turn hands over to the harder model on evidence.
 - `--mailboxAgentWebSearch` or `--no-mailboxAgentWebSearch`: Whether the mailbox agents may search the web, in Ask Coo, in labels' tasks and while unsubscribing, with queries that may carry anything from the mail that helps, as a tracking number. On by default. Queries go to Web Search on Amazon Bedrock AgentCore, Amazon's own index, which runs only in eu-west-1, Ireland, us-east-1, Virginia, and ap-northeast-1, Tokyo: a deployment in the EU searches from Ireland, one in the US from Virginia, and any other from the nearest of them, status's webSearchRegion. AWS documents no retention for queries. A reader with no powers reads the results, and Coo gets only its short answer and sources. Each query costs $0.007, plus the reader's tokens, counted toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooWebSearch.
 - `--mailboxAgentBrowsing` or `--no-mailboxAgentBrowsing`: Whether the mailbox agents may browse, in Ask Coo and in labels' tasks: open a link from the mail or a web search, read the page, and act on it on their own, logging in as their human and submitting forms for them without asking. They log in with codes and links the site mails their human, or with a login among their human's secrets, which Duva types without the model seeing it, and stay logged in between runs in a browser profile of their human's own. They pay only with a card among their human's secrets, within its limits, while mailboxAgentPayments lets them, and never download or upload a file. A browsing run has only the page's tools, so a page can't reach the mailbox, and Duva keeps only a sentence of what it did. On by default. Browser time, at AgentCore Browser's $0.0895 per vCPU-hour and $0.00945 per GB-hour, and the run's tokens count toward mailboxAgentSpendCap. Each human can also turn it off for their own Coo, with the preference cooBrowsing. Unsubscribing on a sender's page doesn't depend on it.
-- `--mailboxAgentPayments` or `--no-mailboxAgentPayments`: Whether the mailbox agents may pay with their humans' cards while they browse, each card only within the per-payment and per-month limits its human set, and above them only once its human approves. A card without limits never pays. On by default; off, no card pays.
+- `--mailboxAgentPayments` or `--no-mailboxAgentPayments`: Whether the mailbox agents may pay with their humans' cards while they browse, each card only on its sites, within the per-payment and per-month limits its human set, and elsewhere or above them only once its human approves. A card without limits never pays. On by default; off, no card pays.
 - `--mailboxAgentSpendCap`: The most the mailbox agents may spend on their model a month, in whole US dollars, 20 by default. At the cap a run stops, its agent's sponsor gets an alert, and runs are refused until the month ends or an admin raises it. 0 turns the mailbox agents off.
 - `--linkedFilesCapGb`: How much each human may have linked at once, in whole gigabytes (GiB), 20 by default. Their agents' linked files count toward it. Past it, a send that would link more is refused, until they stop sharing older files or an admin raises it. 0 lets no one link files, so mail too large to carry its files can't be sent.
 - `--suggestions` or `--no-suggestions`: Whether humans get suggestions while they write mail: the rest of a sentence in grey after the cursor, which Tab takes. On by default. Each costs a small call to suggestionModel, about $0.000075 with Qwen3 32B, counted toward mailboxAgentSpendCap. Each human can also switch them off for themselves, with the preference suggestions.
@@ -871,7 +871,7 @@ A secret is something you keep for Coo to use while it browses: a site's login, 
 
 Keep a secret for your Coo to use, a login, a card or another value, under a name you give it.
 
-Give kind and name, and the parts of its kind: a login's username and password, and its totpSeed if the site asks for a one-time code, a card's number, expiry, cvc and cardholder, or another value's value. Each value is encrypted with a KMS key of the deployment's own, in its region. A card pays only within the limits you set on it, with currency, perPayment and perMonth: until then it doesn't pay. Names are your own, each used once. Only humans keep secrets, at most 100.
+Give kind and name, and the parts of its kind: a login's username and password, and its totpSeed if the site asks for a one-time code, a card's number, expiry, cvc and cardholder, or another value's value. Each value is encrypted with a KMS key of the deployment's own, in its region. A card pays only within the limits you set on it, with currency, perPayment and perMonth: until then it doesn't pay. It pays on its own only on the sites you name with sites, such as sj.se, and their subdomains, by the address the browser reports for the page: a payment on any other site waits for your approval. Names are your own, each used once. Only humans keep secrets, at most 100.
 
 - `--kind` (required): What a secret is. login, a site's username and password, with a one-time-code seed if the site asks for codes; card, a payment card; other, any other value, such as a membership number.
 - `--name` (required): What to call it, as Coo and you know it by, at most 60 characters.
@@ -886,6 +886,7 @@ Give kind and name, and the parts of its kind: a login's username and password, 
 - `--currency`: The currency of a card's limits.
 - `--perPayment`: The most one payment of a card's may be without your approval.
 - `--perMonth`: The most a card pays in a month without your approval.
+- `--sites` (once for each): The sites a card pays on, each as a domain such as sj.se, or a page's address there, and their subdomains. Without them, each of its payments waits for your approval.
 
 ## duva secrets get
 
@@ -907,7 +908,7 @@ Coo can't use it from then on. A payment of the card's waiting in Approvals goes
 
 Rename a secret, replace its parts, or set a card's limits.
 
-Give name to rename it. Give any of its kind's parts to replace them, each as a whole: a part you leave out stays as it was. For a card, give currency, perPayment and perMonth together to set its limits, or null for each to clear them, after which it doesn't pay. A secret's kind stays what it was.
+Give name to rename it. Give any of its kind's parts to replace them, each as a whole: a part you leave out stays as it was. For a card, give currency, perPayment and perMonth together to set its limits, or null for each to clear them, after which it doesn't pay. Add and remove a card's sites with their own operations. A secret's kind stays what it was.
 
 - `--secret` (required): The secret's ID.
 - `--name`: Its new name.
@@ -932,11 +933,29 @@ Call it first without code: Duva mails you a sign-in code, as signing in does, a
 - `--secret` (required): The secret's ID.
 - `--code`: The sign-in code Duva mailed you. Leave it out to have one mailed.
 
+## duva secrets add-site
+
+Add a site a card pays on.
+
+Give site as its domain, such as sj.se, or the address of a page there. The card then pays on it and its subdomains on its own, within its limits, by the address the browser reports for the page. An ending anyone's site is under, such as co.uk, isn't a site. A card names at most 20. Adding one it names already changes nothing.
+
+- `--secret` (required): The secret's ID.
+- `--site` (required): The site's domain, such as sj.se, or the address of a page there.
+
+## duva secrets remove-site
+
+Remove a site a card pays on.
+
+From then on, each of its payments there waits for your approval, as on any site it doesn't name. Removing one it doesn't name changes nothing.
+
+- `--secret` (required): The secret's ID.
+- `--site` (required): The site, as the card names it, such as sj.se.
+
 ## duva secrets use
 
 Answer a part of a secret for a browsing run of your human's Coo to type into a page.
 
-Only a browsing run of a human's own Coo can call it, with its run's token, which never reaches the model: Duva types what it answers into the page, outside the model. Each use is recorded in the secret's history, with the site and the run. A login's code part is the one-time code its seed gives now. A card's parts need the amount and currency of the payment: it pays only within the card's per-payment and per-month limits, while the organization lets mailbox agents pay. Above a limit, the payment waits in its human's Approvals, which is 202, and a fresh run pays once they approve it. A run that already paid on the site with the card, then ran again, is 409, so a retry never pays twice.
+Only a browsing run of a human's own Coo can call it, with its run's token, which never reaches the model: Duva types what it answers into the page, outside the model. Each use is recorded in the secret's history, with the site and the run. A login's code part is the one-time code its seed gives now. A card's parts need the amount and currency of the payment, and the page's address as the browser reports it: it pays only on the card's sites, within its per-payment and per-month limits, while the organization lets mailbox agents pay. On another site, or above a limit, the payment waits in its human's Approvals, which is 202, keeping the page and what the run was given, and once they approve it, a fresh run goes back to the page and pays. A run that already paid on the site with the card, then ran again, is 409, so a retry never pays twice.
 
 - `--secret` (required): The secret's ID.
 - `--part` (required): A part of a secret to type into a page. A login's username, password, and code, the one-time code its seed gives at that moment; a card's number, expiry as MM/YY, expiryMonth as MM, expiryYear as YYYY, cvc and cardholder; another value's value.
@@ -944,6 +963,10 @@ Only a browsing run of a human's own Coo can call it, with its run's token, whic
 - `--amount`: For a card, what the payment is.
 - `--currency`: For a card, the payment's currency.
 - `--for`: For a card, what the payment is for, in a few words.
+- `--page`: For a card, the address of the page it goes into, as the browser reports it, on the site. The card pays only where its host is one of the card's sites or under one, and a payment that waits keeps it, for the fresh run that goes back once it is approved.
+- `--goal`: For a card, the browsing run's goal, which a payment that waits keeps until it is decided, with values and secrets, so the fresh run that goes back to the page is given them again.
+- `--values` (once for each): For a card, the values the browsing run may type.
+- `--secrets` (once for each): For a card, the names of the secrets the browsing run may have typed in.
 
 ## duva mailbox-agent address
 
@@ -1272,13 +1295,13 @@ An approved send waits the organization's undo window, undoWindowSeconds, before
 
 List your Coo's payments, newest first, those waiting for your approval among them.
 
-Coo pays with one of your cards on its own only within the limits you set on it. A payment above them waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.
+Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.
 
 ## duva payments approve
 
-Approve a payment waiting for you, so Coo's next run on the site pays it.
+Approve a payment waiting for you, so Coo goes back to the page and pays it.
 
-The next browsing run that pays its amount on the site with the card pays it, outside the card's limits, once: ask Coo again for that. It still counts toward the card's month. Recorded in the mailbox's change feed under you.
+A fresh browsing run of your Coo's goes back to the page where the payment waited and pays it, outside the card's limits, once, as would any later run that pays its amount on the site with the card. It still counts toward the card's month. A payment on a site the card didn't name adds the site to the card, so it pays there from then on. If the run can't pay, as when the page expired, Coo's activity says why. Recorded in the mailbox's change feed under you.
 
 - `--payment` (required): The payment's ID.
 

@@ -363,46 +363,77 @@ test("requests by mail count toward the mailbox agents' spend cap, and with the 
   expect(refused!.text).toContain("An admin turned the mailbox agents off, with a spend cap of $0. Ask one to raise it.");
 });
 
-test("a payment above its card's limits waits, Coo's reply says so, and later replies say it was approved, then paid", async () => {
-  const requests: Request[] = [];
+/**
+ * A deployment where Linus keeps a card that pays on example.net up to 100.00 SEK, and the shop at
+ * shop.example.net checks out the beans in his cart for 149.00 SEK, until a test has the checkout
+ * expire, and his Coo's browsing runs fill the card in, then the run that goes back pays, as `goBack` scripts it.
+ */
+async function withCheckout(goBack: ((request: Request) => ModelEvent[])[]) {
   const browsing = (request: Request) => request.tools.some(({ name }) => name === "finish");
-  const buys = () => [() => [use("browse", { url: "https://shop.example.net/checkout", goal: "Buy the coffee beans in the cart.", secrets: ["Visa"] })], () => [{ text: "I tried to buy the beans." }]];
-  const fill = (element: number, part: string) => () => [use("fillSecret", { element, secret: "Visa", part, amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg" })];
-  const coo: ((request: Request) => ModelEvent[])[] = [...buys(), ...buys()];
-  const page: ((request: Request) => ModelEvent[])[] = [fill(1, "number"), fill(1, "number"), fill(2, "expiry"), fill(3, "cvc"), () => [use("click", { element: 4 })], () => [use("finish", { done: true, said: "It paid for the beans." })]];
+  const buys: ((request: Request) => ModelEvent[])[] = [() => [use("browse", { url: "https://shop.example.net/checkout", goal: "Buy the coffee beans in the cart.", secrets: ["Visa"] })], () => [{ text: "I tried to buy the beans." }]];
+  const page = [fill(1, "number"), ...goBack];
   let [cooStep, pageStep] = [0, 0];
   const model: Model = async function* (request) {
-    requests.push(structuredClone(request));
-    const events = browsing(request) ? (page[pageStep++]?.(request) ?? [use("finish", { done: false, said: "It stopped." })]) : request.tools.length === 0 ? [{ text: "Nothing." }] : (coo[cooStep++]?.(request) ?? [{ text: "Done." }]);
+    const events = browsing(request) ? (page[pageStep++]?.(request) ?? [use("finish", { done: false, said: "It stopped." })]) : request.tools.length === 0 ? [{ text: "Nothing." }] : (buys[cooStep++]?.(request) ?? [{ text: "Done." }]);
     for (const event of events) yield event;
     yield { usage: { inputTokens: 1000, outputTokens: 100 } };
   };
-  const { duva, linus, mailbox } = await withCoo({ model });
+  const coo = await withCoo({ model });
   const html = (body: string) => new Response(`<!doctype html><html><head><title>Example Shop</title></head><body>${body}</body></html>`, { headers: { "content-type": "text/html" } });
-  await duva.webServer("shop.example.net", {
+  const checkout = { expired: false };
+  await coo.duva.webServer("shop.example.net", {
     answer: async ({ url }) =>
-      new URL(url).pathname === "/checkout"
-        ? html(
-            `<p>Coffee beans, 1 kg. Total: 149.00 SEK</p><form method="post" action="/pay"><label for="n">Card number</label><input id="n" name="n" autocomplete="cc-number"><label for="e">Expiry</label><input id="e" name="e" autocomplete="cc-exp"><label for="c">CVC</label><input id="c" name="c" autocomplete="cc-csc"><button>Pay now</button></form>`,
-          )
-        : html("<p>Thank you!</p>"),
+      new URL(url).pathname !== "/checkout"
+        ? html("<p>Thank you!</p>")
+        : checkout.expired
+          ? html("<p>This checkout has expired.</p>")
+          : html(
+              `<p>Coffee beans, 1 kg. Total: 149.00 SEK</p><form method="post" action="/pay"><label for="n">Card number</label><input id="n" name="n" autocomplete="cc-number"><label for="e">Expiry</label><input id="e" name="e" autocomplete="cc-exp"><label for="c">CVC</label><input id="c" name="c" autocomplete="cc-csc"><button>Pay now</button></form>`,
+            ),
   });
-  await linus.POST("/secrets", { body: { kind: "card", name: "Visa", number: "4242 4242 4242 4242", expiry: "12/29", cvc: "123", cardholder: "Linus Torvalds", currency: "SEK", perPayment: "100.00", perMonth: "150.00" } as never });
-  const fromCoo = async () => (await sentMail(duva)).filter(({ from }) => from?.address === "linus-coo@example.com");
+  await coo.linus.POST("/secrets", { body: { kind: "card", name: "Visa", number: "4242 4242 4242 4242", expiry: "12/29", cvc: "123", cardholder: "Linus Torvalds", currency: "SEK", perPayment: "100.00", perMonth: "150.00", sites: ["example.net"] } as never });
+  const fromCoo = async () => (await sentMail(coo.duva)).filter(({ from }) => from?.address === "linus-coo@example.com");
+  const approve = async () => {
+    const { data: payments } = await coo.linus.GET("/payments");
+    await coo.linus.POST("/payments/{payment}/approve", { params: { path: { payment: payments!.payments[0]!.id } } });
+  };
+  return { ...coo, checkout, fromCoo, approve };
+}
+
+const fill = (element: number, part: string) => () => [use("fillSecret", { element, secret: "Visa", part, amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg" })];
+// A request's run, its approval and the run that goes back to pay take longer than most tests.
+const budget = { timeout: 45_000 };
+
+test("a payment above its card's limits waits, Coo's reply says so, and once it is approved, later replies say Coo goes back to pay it, then that it paid, with no one asking again", budget, async () => {
+  const { duva, fromCoo, approve } = await withCheckout([fill(1, "number"), fill(2, "expiry"), fill(3, "cvc"), () => [use("click", { element: 4 })], () => [use("finish", { done: true, said: "It paid for the beans." })]]);
 
   await duva.receive(request({ subject: "Coffee", text: "Buy the beans in my cart." }), { to: ["linus-coo@example.com"] });
-
-  expect((await fromCoo())[0]!.text).toContain("Paying 149.00 SEK on example.net with Visa, for Coffee beans, 1 kg: it's above the card's limits, so it waits for your approval. I'll write again once it's decided.");
-  const { data: payments } = await linus.GET("/payments");
-  await linus.POST("/payments/{payment}/approve", { params: { path: { payment: payments!.payments[0]!.id } } });
-  expect((await fromCoo())[1]!.text).toContain("You approved paying 149.00 SEK on example.net. Mail me to go on, and I'll pay it.");
-
-  await duva.askAgent("linus@example.org", { mailbox: mailbox.id, words: "Buy the beans now." });
+  await approve();
 
   const mails = await fromCoo();
   expect(mails).toHaveLength(3);
-  expect(mails[2]).toMatchObject({ to: [{ address: "linus@example.org" }], subject: "Re: Coffee" });
-  expect(mails[2]!.text).toContain("I paid 149.00 SEK on example.net with Visa, as approved.");
+  expect(mails[0]!.text).toContain("Paying 149.00 SEK on example.net with Visa, for Coffee beans, 1 kg: it's above the card's limits, so it waits for your approval. I'll write again once it's decided.");
+  expect(mails.slice(1).map(({ subject, to }) => ({ subject, to }))).toEqual([
+    { subject: "Re: Coffee", to: [{ address: "linus@example.org", name: "" }] },
+    { subject: "Re: Coffee", to: [{ address: "linus@example.org", name: "" }] },
+  ]);
+  expect(mails.slice(1).map(({ text }) => text!.split("\n")[0])).toEqual(
+    expect.arrayContaining(["You approved paying 149.00 SEK on example.net. I'm going back to the page to pay it, and I'll write again once I have.", "I paid 149.00 SEK on example.net with Visa, as approved."]),
+  );
+});
+
+test("a payment approved after its page expired is followed up with what the run that went back to pay it said", budget, async () => {
+  const { duva, checkout, fromCoo, approve } = await withCheckout([() => [use("finish", { done: false, said: "The checkout had expired, so it couldn't pay." })]]);
+  await duva.receive(request({ subject: "Coffee", text: "Buy the beans in my cart." }), { to: ["linus-coo@example.com"] });
+  checkout.expired = true;
+
+  await approve();
+
+  const mails = await fromCoo();
+  expect(mails).toHaveLength(3);
+  expect(mails.slice(1).map(({ text }) => text!.split("\n")[0])).toEqual(
+    expect.arrayContaining(["You approved paying 149.00 SEK on example.net. I'm going back to the page to pay it, and I'll write again once I have.", "I went back to pay 149.00 SEK on example.net, as approved, but couldn't: The checkout had expired, so it couldn't pay."]),
+  );
 });
 
 test("mail that brings numbers but not the code counts as an attempt, so forged mail can't guess its way to the code", async () => {

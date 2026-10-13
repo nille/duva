@@ -46,9 +46,10 @@ export interface BrowserSession {
   fill(index: number, value: string): Promise<PageView>;
   /**
    * Types the value into the field as a keyboard does, through the browser, so no script Duva
-   * evaluates in the page carries it, as for a secret's part (ADR-0039).
+   * evaluates in the page carries it, as for a secret's part (ADR-0039). Given an origin, it types
+   * only while the page is still there, as for a card's part, which goes only into its sites (#171).
    */
-  typeIn(index: number, value: string): Promise<PageView>;
+  typeIn(index: number, value: string, origin?: string): Promise<PageView>;
   /** Checks or unchecks a checkbox, checks a radio button, or picks a select's option by its text. */
   choose(index: number, option?: string): Promise<PageView>;
   /** Clicks the button or the link, and waits for the page it leads to. */

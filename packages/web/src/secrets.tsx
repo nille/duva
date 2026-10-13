@@ -1,14 +1,15 @@
 // Secrets (ADR-0039, #162), a page of Settings: the logins, cards and other values the human keeps
 // for Coo to use while it browses, which Coo never sees. Each is a line by its name, saying its kind
-// and last four characters and, for a card, its limits, which opens into its limits, Reveal, Rename,
-// Replace, its history and Delete. Revealing asks Duva to mail a sign-in code first, and shows the
-// value only until the human hides it or leaves. Adding closes the sheet after a seam.
+// and last four characters and, for a card, its limits and the sites it pays on (#171), which opens
+// into its limits, its sites, Reveal, Rename, Replace, its history and Delete. Revealing asks Duva to
+// mail a sign-in code first, and shows the value only until the human hides it or leaves. Adding
+// closes the sheet after a seam.
 import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
 import { useDates } from "./dates.ts";
 import { ChevronIcon } from "./setting-parts.tsx";
-import { change } from "./setup.ts";
+import { type Answer, change } from "./setup.ts";
 import { strings } from "./strings.ts";
 
 type Secret = components["schemas"]["Secret"];
@@ -85,12 +86,12 @@ export function SecretsPage({ client, email, onChange, onSignedOut }: { client: 
   );
 }
 
-/** What a secret's line says under its name: its kind and last four, and how a card pays. */
+/** What a secret's line says under its name: its kind and last four, and how and where a card pays. */
 function summaryOf(secret: Secret): { text: string; unlimited: boolean } {
   const kind = secret.kind === "login" ? copy.summary.login(secret.lastFour, secret.oneTimeCodes === true) : secret.kind === "card" ? copy.summary.card(secret.lastFour) : copy.summary.other(secret.lastFour);
   if (secret.kind !== "card") return { text: kind, unlimited: false };
   const { limits } = secret;
-  return limits === undefined ? { text: kind, unlimited: true } : { text: `${kind}, ${copy.limitsSummary(limits.perPayment, limits.perMonth, limits.currency)}`, unlimited: false };
+  return limits === undefined ? { text: kind, unlimited: true } : { text: `${kind}, ${copy.limitsSummary(limits.perPayment, limits.perMonth, limits.currency)}, ${copy.sitesSummary(secret.sites ?? [])}`, unlimited: false };
 }
 
 function SecretLine({
@@ -139,6 +140,7 @@ function SecretLine({
       {open && (
         <div className="setting" role="group" aria-labelledby={heading}>
           {secret.kind === "card" && <Limits client={client} secret={secret} onChanged={onChanged} onSignedOut={onSignedOut} />}
+          {secret.kind === "card" && <Sites client={client} secret={secret} onChanged={onChanged} onSignedOut={onSignedOut} />}
           <Reveal client={client} email={email} secret={secret} onRevealed={() => setReveals((count) => count + 1)} onSignedOut={onSignedOut} />
           <Rename client={client} secret={secret} onChanged={onChanged} onSignedOut={onSignedOut} />
           <Replace client={client} secret={secret} onChanged={onChanged} onSignedOut={onSignedOut} />
@@ -220,6 +222,75 @@ function Limits({ client, secret, onChanged, onSignedOut }: { client: DuvaClient
         </div>
         <Failure message={failed} />
       </form>
+    </Part>
+  );
+}
+
+/** A card's sites, each with Remove, and a field for another, each change saved at once. */
+function Sites({ client, secret, onChanged, onSignedOut }: { client: DuvaClient; secret: Secret; onChanged: (said: string) => void; onSignedOut: () => void }) {
+  // The sites as last saved, until the page reads them again.
+  const [sites, setSites] = useState(secret.sites ?? []);
+  useEffect(() => setSites(secret.sites ?? []), [secret.sites]);
+  const [site, setSite] = useState("");
+  const [failed, setFailed] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const id = useId();
+  const path = { secret: secret.id };
+  const save = async (asked: Promise<Answer<Secret>>, said: (sites: string[]) => string) => {
+    setBusy(true);
+    setFailed(undefined);
+    const answer = await change(asked, onSignedOut);
+    if (answer !== undefined && !("failed" in answer)) setSites(answer.data.sites ?? []);
+    setBusy(false);
+    if (answer === undefined) return false;
+    if ("failed" in answer) return setFailed(answer.failed), false;
+    onChanged(said(answer.data.sites ?? []));
+    return true;
+  };
+  const add = async (event: FormEvent) => {
+    event.preventDefault();
+    // Duva gives the site as the card names it, from a page's address or in lower case.
+    const given = site.trim();
+    const added = client.POST("/secrets/{secret}/sites", { params: { path }, body: { site: given } });
+    if (await save(added, (changed) => copy.siteAdded(changed.find((each) => !sites.includes(each)) ?? given))) setSite("");
+  };
+  return (
+    <Part title={copy.sites} lead={copy.sitesLead}>
+      {sites.length === 0 ? (
+        <p className="setting-lead">{copy.noSites}</p>
+      ) : (
+        <ul className="person-list secret-sites" aria-label={copy.sites}>
+          {sites.map((each) => (
+            <li key={each} className="person-row">
+              <div className="person-line">
+                <span className="person-name">{each}</span>
+                <button
+                  type="button"
+                  className="button button-small button-quiet"
+                  aria-label={copy.removeSiteOf(each)}
+                  disabled={busy}
+                  onClick={() => void save(client.DELETE("/secrets/{secret}/sites/{site}", { params: { path: { ...path, site: each } } }), () => copy.siteRemoved(each))}
+                >
+                  {copy.removeSite}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="address-add" onSubmit={(event) => void add(event)}>
+        <label htmlFor={id}>{copy.site}</label>
+        <div className="address-add-row">
+          <input id={id} type="text" inputMode="url" autoCapitalize="none" spellCheck={false} placeholder={copy.sitePlaceholder} aria-describedby={`${id}-hint`} value={site} onChange={(event) => setSite(event.target.value)} />
+          <button type="submit" className="button" disabled={busy || site.trim() === ""}>
+            {copy.addSite}
+          </button>
+        </div>
+        <p id={`${id}-hint`} className="hint">
+          {copy.siteHint}
+        </p>
+      </form>
+      <Failure message={failed} />
     </Part>
   );
 }
@@ -502,9 +573,11 @@ function AddSecret({ client, onAdded, onSignedOut }: { client: DuvaClient; onAdd
   const [name, setName] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [limits, setLimits] = useState({ currency: "", perPayment: "", perMonth: "" });
+  const [sites, setSites] = useState("");
   const [failed, setFailed] = useState<string>();
   const [busy, setBusy] = useState(false);
   const limited = kind === "card" && Object.values(limits).some((value) => value.trim() !== "");
+  const named = kind === "card" ? sites.split(/[\s,]+/).filter((each) => each !== "") : [];
   const ready = name.trim() !== "" && fieldsOf[kind].every(({ name: field, optional }) => optional === true || (values[field] ?? "").trim() !== "");
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -515,6 +588,7 @@ function AddSecret({ client, onAdded, onSignedOut }: { client: DuvaClient; onAdd
       name: name.trim(),
       ...typed(kind, values),
       ...(limited && { currency: limits.currency.trim().toUpperCase(), perPayment: limits.perPayment.trim(), perMonth: limits.perMonth.trim() }),
+      ...(named.length > 0 && { sites: named }),
     };
     const answer = await change(client.POST("/secrets", { body }), onSignedOut);
     setBusy(false);
@@ -523,9 +597,11 @@ function AddSecret({ client, onAdded, onSignedOut }: { client: DuvaClient; onAdd
     setName("");
     setValues({});
     setLimits({ currency: "", perPayment: "", perMonth: "" });
+    setSites("");
     onAdded(answer.data);
   };
   const kindHint = useId();
+  const sitesHint = useId();
   return (
     <form className="setting setting-add secret-add" aria-labelledby="add-secret" onSubmit={(event) => void submit(event)}>
       <div className="setting-part">
@@ -571,6 +647,15 @@ function AddSecret({ client, onAdded, onSignedOut }: { client: DuvaClient; onAdd
           </div>
           <p className="hint">{copy.limitsHint}</p>
         </fieldset>
+      )}
+      {kind === "card" && (
+        <label className="setting-field secret-add-sites">
+          <span>{copy.addSites}</span>
+          <input type="text" inputMode="url" autoCapitalize="none" spellCheck={false} placeholder={copy.addSitesPlaceholder} aria-describedby={sitesHint} value={sites} onChange={(event) => setSites(event.target.value)} />
+          <span id={sitesHint} className="hint">
+            {copy.addSitesHint}
+          </span>
+        </label>
       )}
       <div className="setting-foot">
         <button type="submit" className="button button-primary" disabled={busy || !ready}>

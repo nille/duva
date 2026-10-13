@@ -82,14 +82,20 @@ const kinds: Partial<Record<Change["type"], Kind>> = {
   paymentMade: "payments",
   paymentAsked: "payments",
   paymentDecided: "payments",
+  paymentNotMade: "payments",
 };
 const allKinds: Kind[] = ["conversations", "tasks", "draftsAndSends", "approvals", "payments", "organizing", "screening", "unsubscribes", "pausesAndLimits", "alerts", "setup"];
 
-/** Whether the change failed: a send SES refused, bounced, didn't send after all or never answered, a turn or a task that couldn't finish, or an unsubscribe that didn't work. */
+/**
+ * Whether the change failed: a send SES refused, bounced, didn't send after all or never answered, a
+ * turn or a task that couldn't finish, an unsubscribe that didn't work, or a payment approved that
+ * the run going back couldn't make.
+ */
 function failedOf(change: Change): boolean {
   switch (change.type) {
     case "sendFailed":
     case "sendUnclear":
+    case "paymentNotMade":
       return true;
     case "feedbackReceived":
       // A complaint is the recipient's word on mail that arrived, and a soft bounce may yet arrive.

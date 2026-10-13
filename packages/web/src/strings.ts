@@ -370,6 +370,8 @@ export const strings = {
     downloads: (count: number, name: string) => (count === 1 ? `${name} was downloaded.` : `${count} of your linked files were downloaded, the last ${name}.`),
     payments: (count: number) => (count === 1 ? "A payment of mine waits for your approval." : `${count} payments of mine wait for your approval.`),
     paid: (count: number, amount: string, currency: string, site: string) => (count === 1 ? `I paid ${amount} ${currency} on ${site}.` : `I paid ${count} times, the last ${amount} ${currency} on ${site}.`),
+    unpaid: (count: number, amount: string, currency: string, site: string, said: string) =>
+      `${count === 1 ? `I couldn't pay ${amount} ${currency} on ${site} as you approved` : `I couldn't pay ${count} payments you approved, the last ${amount} ${currency} on ${site}`}: ${said}`.replace(/([^.!?])$/, "$1."),
   },
 
   /** Ask Coo: the human's conversation with their mailbox's mailbox agent, Coo, in the reading pane. */
@@ -1150,7 +1152,7 @@ export const strings = {
       kinds: { login: "Login", card: "Card", other: "Other" },
       kindHints: {
         login: "A site's username and password, and its one-time-code seed if it asks for codes.",
-        card: "A payment card. It pays only within the limits you set.",
+        card: "A payment card. It pays only on the sites you name, within the limits you set.",
         other: "Any value Coo may fill in, like a membership number.",
       },
       summary: {
@@ -1159,6 +1161,7 @@ export const strings = {
         other: (lastFour: string) => (lastFour === "" ? "A value" : `A value ending ${lastFour}`),
       },
       limitsSummary: (perPayment: string, perMonth: string, currency: string) => `pays up to ${perPayment} ${currency} at a time, ${perMonth} ${currency} a month`,
+      sitesSummary: (sites: string[]) => (sites.length === 0 ? "on no site yet" : sites.length <= 2 ? `on ${sites.join(" and ")}` : `on ${sites[0]}, ${sites[1]} and ${sites.length - 2} more`),
       noLimits: "doesn't pay until you set its limits",
       add: "Add a secret",
       addLead: "Duva seals it with a key of its own in this deployment. Coo knows it by its name, which you choose.",
@@ -1181,6 +1184,20 @@ export const strings = {
       perPayment: "Per payment",
       perMonth: "Per month",
       limitsHint: "Leave them empty and the card doesn't pay at all.",
+      sites: "Sites",
+      sitesLead: "Where the card pays on its own, each site with its subdomains, by the address the browser reports for the page. A payment anywhere else waits for you in Approvals, and approving it adds the site here.",
+      noSites: "None yet, so each payment waits for you.",
+      site: "Site",
+      sitePlaceholder: "sj.se",
+      siteHint: "Its domain, as sj.se, or the address of a page there.",
+      addSite: "Add site",
+      removeSite: "Remove",
+      removeSiteOf: (site: string) => `Remove ${site}`,
+      siteAdded: (site: string) => `Added ${site}.`,
+      siteRemoved: (site: string) => `Removed ${site}.`,
+      addSites: "Sites it pays on",
+      addSitesPlaceholder: "sj.se, netflix.com",
+      addSitesHint: "Each site's domain, as sj.se, with a comma between them. Without one, each payment waits for you.",
       spent: (amount: string, currency: string) => `${amount} ${currency} paid this month`,
       adding: "Adding…",
       added: (name: string) => `Added ${name}.`,
@@ -1918,7 +1935,10 @@ export const strings = {
       asks: (agent: string) => `${agent} asks to pay`,
       title: (amount: string, currency: string, site: string) => `${amount} ${currency} on ${site}`,
       line: (card: string, what: string) => `With ${card}, for ${what}`,
-      lead: (card: string) => `It's above ${card}'s limits, so the run stopped before paying and waits for you. Approved, the next run of Coo's that pays this amount on the site with the card pays it, once: ask Coo again for that.`,
+      lead: (card: string, site: string, { newSite, aboveLimits }: { newSite: boolean; aboveLimits: boolean }) =>
+        newSite
+          ? `${card} doesn't pay on ${site} yet${aboveLimits ? ", and this is above its limits" : ""}, so the run stopped before paying and waits for you. Make sure ${site} is the site you mean. Approved, ${card} pays there from now on, and Coo goes back to the page and pays this, once.`
+          : `It's above ${card}'s limits, so the run stopped before paying and waits for you. Approved, Coo goes back to the page and pays it, once.`,
       what: "For",
       card: "Card",
       site: "Site",
@@ -1926,7 +1946,7 @@ export const strings = {
       decline: "Decline",
       approvedRow: "Approved",
       declinedRow: "Declined",
-      approved: "Approved. Ask Coo to pay it now, and its next run on the site pays it.",
+      approved: "Approved. Coo goes back to the page and pays it, and says in its activity how it went.",
       declined: "Declined. Nothing was paid.",
     },
     back: "All approvals",

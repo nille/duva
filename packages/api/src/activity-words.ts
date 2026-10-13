@@ -229,6 +229,7 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
               approved: "the payment it waited on was approved",
               declined: "the payment it waited on was declined",
               paid: "it paid the payment that was approved",
+              unpaid: "it couldn't pay the payment that was approved",
             }[change.outcome ?? "sent"]
           }.`;
         case "replyFailed":
@@ -245,12 +246,18 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
     case "paymentMade":
       if (change.site === undefined) return `${who} paid on a site.`;
       return `${who} paid ${change.amount} ${change.currency} on ${change.site} with ${change.cardName}${change.approved ? ", as approved" : ""}, for ${change.for}.`;
-    case "paymentAsked":
+    case "paymentAsked": {
       if (change.site === undefined) return `${who} asked for approval to pay.`;
-      return `${who} asked for approval to pay ${change.amount} ${change.currency} on ${change.site} with ${change.cardName}, for ${change.for}, above the card's limits.`;
+      // A payment from before cards named their sites waited only above its limits.
+      const why = change.newSite ? `, a site the card doesn't pay on yet${change.aboveLimits ? ", and above its limits" : ""}` : ", above the card's limits";
+      return `${who} asked for approval to pay ${change.amount} ${change.currency} on ${change.site} with ${change.cardName}, for ${change.for}${why}.`;
+    }
     case "paymentDecided":
       if (change.site === undefined) return change.approved ? `${who} approved ${agent}'s payment.` : `${who} declined ${agent}'s payment.`;
-      return `${who} ${change.approved ? "approved" : "declined"} ${agent}'s payment of ${change.amount} ${change.currency} on ${change.site}.`;
+      return `${who} ${change.approved ? "approved" : "declined"} ${agent}'s payment of ${change.amount} ${change.currency} on ${change.site}${change.siteAdded ? ", and added the site to the card" : ""}.`;
+    case "paymentNotMade":
+      if (change.site === undefined) return `${who} went back to pay as approved, and couldn't.`;
+      return `${who} went back to pay ${change.amount} ${change.currency} on ${change.site} with ${change.cardName}, as approved, and couldn't: ${change.said}`.replace(/([^.!?])$/, "$1.");
     case "threadErased":
       return change.actor !== undefined ? `${who} erased a thread for good, emptying Trash.` : "Duva erased a thread for good, after the retention period.";
     case "agentSettingsChanged":

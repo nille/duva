@@ -126,14 +126,14 @@ export const feederFilter = { eventName: ["INSERT"], dynamodb: { Keys: { [tableK
 
 /**
  * Which of the table stream's records Lambda hands the task giver: each new change in a mailbox's
- * change feed that may add a label to a message (ADR-0029), or decide a send or a payment Coo
- * follows up for a request by mail (ADR-0040).
+ * change feed that may add a label to a message (ADR-0029), decide a send or a payment Coo
+ * follows up for a request by mail (ADR-0040), or approve a payment Coo goes back to pay (#171).
  */
 export const taskGiverFilter = {
   eventName: ["INSERT"],
   dynamodb: {
     Keys: { [tableKey.partitionKey]: { S: [{ prefix: "mailbox#" }] }, [tableKey.sortKey]: { S: [{ prefix: "change#" }] } },
-    NewImage: { type: { S: ["threadLabelsChanged", "messageReceived", "approvalDecided", "messageSent", "sendFailed", "paymentDecided", "paymentMade"] } },
+    NewImage: { type: { S: ["threadLabelsChanged", "messageReceived", "approvalDecided", "messageSent", "sendFailed", "paymentDecided", "paymentMade", "paymentNotMade"] } },
   },
 };
 

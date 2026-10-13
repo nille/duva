@@ -8,7 +8,8 @@ import { AfterInvocationEvent, AfterModelCallEvent, AfterToolsEvent, BeforeModel
 import { costOf, deciderModel, type MailboxAgentModel, type Usage } from "./agent-models.ts";
 import { memoryLines, memoryManager, memoryOperations, memoryUnbacked, unbackedMemoryClaim } from "./agent-memory.ts";
 import type { Browser } from "./browser.ts";
-import { browse, type Browsing, browseTool, mailedLogin, runUnsubscribe, secretsTyped } from "./browsing.ts";
+import { browse, type Browsing, browseTool, mailedLogin, runPayment, runUnsubscribe, secretsTyped } from "./browsing.ts";
+import type { WayBack } from "./payments.ts";
 import { asConverse, type Models, saying, sayUsage, strandsAgent, strandsSpec } from "./strands.ts";
 import { searchTheWeb, type WebSearch, type WebSearchMade, webSearchTool } from "./web-search.ts";
 
@@ -106,6 +107,12 @@ export interface RunPayload {
   learnsFromMail?: boolean;
   /** For unsubscribing on a sender's page (ADR-0031), its URL and the address to unsubscribe, which is all the run gets. */
   unsubscribe?: { url: string; address: string };
+  /**
+   * For going back to pay a payment its human approved (#171), the way back to the page where it
+   * waited, and what was approved: the card's name, the amount and its currency on the site, and
+   * what it is for.
+   */
+  payment?: WayBack & { cardName: string; amount: string; currency: string; site: string; for: string };
   /** The time the run starts, as an ISO date. */
   now: string;
 }
@@ -309,7 +316,7 @@ function systemPrompt(
           ...(payload.secrets === undefined || payload.secrets.length === 0
             ? []
             : [
-                `${payload.owner} keeps secrets that browse can type into a page without you or it ever seeing them: ${payload.secrets.map(({ name, kind }) => `"${name}" (${kind})`).join(", ")}. Name in browse's secrets those the work needs, and only on the site they are for. A card pays only within the limits ${payload.owner} set on it, and above them the payment waits for their approval.`,
+                `${payload.owner} keeps secrets that browse can type into a page without you or it ever seeing them: ${payload.secrets.map(({ name, kind }) => `"${name}" (${kind})`).join(", ")}. Name in browse's secrets those the work needs, and only on the site they are for. A card pays on its own only on the sites and within the limits ${payload.owner} set for it, and elsewhere or above them the payment waits for their approval, after which Duva goes back to pay it by itself.`,
               ]),
         ]
       : []),
@@ -416,7 +423,7 @@ async function misstatedIn(answer: string, { apiUrl, token }: RunPayload, call: 
  * once, by the model, told what Duva has. Where the payload lets it, it searches the web with
  * `webSearch`, through a reader with no tools, and browses in `browser`, in a run of its own with
  * only the page's tools (ADR-0038). An unsubscribe runs on the page in `browser` instead, with no
- * tool of Duva's.
+ * tool of Duva's, and so does going back to pay a payment its human approved (#171).
  */
 export async function* runAgent(
   payload: RunPayload,
@@ -424,6 +431,7 @@ export async function* runAgent(
 ): AsyncGenerator<RunEvent> {
   const searching = payload.webSearch === true && webSearch !== undefined;
   if (payload.unsubscribe !== undefined) return yield* runUnsubscribe(payload, { models, browser, ...(searching && { webSearch }) });
+  if (payload.payment !== undefined) return yield* runPayment(payload, { models, browser, login: mailedLogin(payload, call), secrets: secretsTyped(payload, call) });
   const browsing = payload.browsing !== undefined && browser !== undefined;
   const { harder, region } = payload.model;
   let current = payload.model.model;

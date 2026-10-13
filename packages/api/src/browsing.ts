@@ -11,14 +11,18 @@
 // have its human's secrets that Coo named typed into the page (ADR-0039): Duva gets each part with
 // the run's token and types it through the browser, outside every model, and hides it in every
 // page the run reads after, so no value reaches a prompt, a tool's result or what the run says. A
-// card's part pays first, within its limits, and only a run that paid on the site clicks to pay. It
-// may search the web through a reader with no tools (ADR-0037). Nothing is kept of a run but its sentence.
+// card's part pays first, on its sites by the page's address as the browser reports it, within its
+// limits, and only a run that paid on the site clicks to pay. A payment that waits keeps the page and
+// what the run was given, and once its human approves it, a fresh run goes back there to pay it
+// (#171). It may search the web through a reader with no tools (ADR-0037). Nothing else is kept of a
+// run but its sentence.
 import type { components } from "@duva/openapi";
 import { AfterModelCallEvent, AfterToolsEvent, BeforeModelCallEvent, BeforeToolsEvent, InvokeModelStage, ModelStreamUpdateEvent } from "@strands-agents/sdk";
 import { getDomain } from "tldts";
 import type { MailboxAgentModel } from "./agent-models.ts";
 import type { RunEvent, RunPayload, ToolSpec } from "./agent-loop.ts";
 import { type Browser, browserSecondCost, type BrowserSession, describePage, type PageElement, type PageView } from "./browser.ts";
+import type { Asked } from "./payments.ts";
 import { type Models, saying, sayUsage, strandsAgent } from "./strands.ts";
 import { searchTheWeb, type WebSearch, webSearchTool } from "./web-search.ts";
 
@@ -88,7 +92,7 @@ const loginTool: ToolSpec = {
 const secretTool: ToolSpec = {
   name: "fillSecret",
   description:
-    "Has Duva type a part of one of the secrets you were given into a field, without you ever seeing it: a login's username, password or one-time code, a card's number, expiry, expiryMonth, expiryYear, cvc or cardholder, or another value's value. A card's part pays: give the amount and currency the page asks, and what it is for. It pays only within the card's limits; above them the payment waits for approval and the run ends.",
+    "Has Duva type a part of one of the secrets you were given into a field, without you ever seeing it: a login's username, password or one-time code, a card's number, expiry, expiryMonth, expiryYear, cvc or cardholder, or another value's value. A card's part pays: give the amount and currency the page asks, and what it is for. It pays only on the card's sites, within its limits; elsewhere or above them the payment waits for approval and the run ends.",
   inputSchema: {
     json: {
       type: "object",
@@ -109,7 +113,7 @@ const secretTool: ToolSpec = {
 export const browseTool: ToolSpec = {
   name: "browse",
   description:
-    "Opens a web page in a browser of your own and works toward a goal there on its own: it reads the page, clicks, chooses, submits forms and types the values you give, and logs in as your owner with a code or link the site mails them, staying logged in for next time. It can also have your owner's secrets you name typed in, logins and cards among them, which neither you nor it ever sees, and pays only with a card you name, within its limits. It stays on that site, and never downloads or uploads a file. Use it for a link in the mail or a web search's source, when what your owner asks needs the page. Gives back a sentence of what was done.",
+    "Opens a web page in a browser of your own and works toward a goal there on its own: it reads the page, clicks, chooses, submits forms and types the values you give, and logs in as your owner with a code or link the site mails them, staying logged in for next time. It can also have your owner's secrets you name typed in, logins and cards among them, which neither you nor it ever sees, and pays only with a card you name, on the card's sites and within its limits. It stays on that site, and never downloads or uploads a file. Use it for a link in the mail or a web search's source, when what your owner asks needs the page. Gives back a sentence of what was done.",
   inputSchema: {
     json: {
       type: "object",
@@ -165,11 +169,12 @@ type GivenSecret = NonNullable<RunPayload["secrets"]>[number];
 
 /**
  * Gets a part of a secret for the page on the site: the value to type, a payment that waits for
- * approval, or why not, as Duva answers the run.
+ * approval, or why not, as Duva answers the run. A card's part is for the page at its address, with
+ * what the run was given, which a payment that waits keeps.
  */
 export type SecretTyper = (
   secret: GivenSecret,
-  use: { part: string; site: string; amount?: string; currency?: string; for?: string },
+  use: { part: string; site: string; amount?: string; currency?: string; for?: string; page?: string } & Partial<Asked>,
 ) => Promise<{ value: string } | { waiting: components["schemas"]["Payment"] } | { refused: string }>;
 
 /** Gets the parts of the human's secrets through Duva's API with the run's token, which no model sees. */
@@ -197,6 +202,13 @@ interface Concealed {
 }
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The page's address as a payment keeps it, without its query and fragment if they hold a value typed from a secret, as a form sent by GET puts there. */
+function addressOf(url: string, concealed: Concealed[]): string {
+  if (!concealed.some(({ value }) => url.includes(value) || url.includes(encodeURIComponent(value)))) return url;
+  const { origin, pathname } = new URL(url);
+  return `${origin}${pathname}`;
+}
 
 /**
  * The page with every value typed from a secret hidden behind its mark, as in a field that holds
@@ -243,8 +255,8 @@ interface Run {
   now: string;
   webSearch?: WebSearch;
   login?: LoginFetcher;
-  /** The secrets it may have typed in, and what types them. */
-  secrets?: { given: GivenSecret[]; typed: SecretTyper; owner: string };
+  /** The secrets it may have typed in, what types them, and what the run was asked with, which a card's payment that waits keeps. */
+  secrets?: { given: GivenSecret[]; typed: SecretTyper; owner: string; asked: Asked };
 }
 
 /**
@@ -324,16 +336,26 @@ async function browseTimed(run: Run, timed: { seconds: number }): Promise<{ verd
         const target = page.elements.find((each) => each.index === index);
         if (target?.kind !== "field" || target.type === "file") return { ok: false, result: `Element ${input.element} isn't a field a secret can be typed in.` };
         const optional = (key: string) => (typeof input[key] === "string" && input[key] !== "" ? { [key]: input[key] as string } : {});
-        const typed = await run.secrets.typed(given, { part: String(input.part ?? ""), site, ...optional("amount"), ...optional("currency"), ...optional("for") });
+        // A card goes only into a page on its sites, as the browser reports the page's address, and only while it is still there.
+        const paying = given.kind === "card" ? { page: addressOf(page.url, concealed), ...run.secrets.asked } : {};
+        const typed = await run.secrets.typed(given, { part: String(input.part ?? ""), site, ...optional("amount"), ...optional("currency"), ...optional("for"), ...paying });
         if ("refused" in typed) return { ok: false, result: typed.refused };
         if ("waiting" in typed) {
-          const { amount, currency } = typed.waiting;
-          end({ done: false, said: `The payment of ${amount} ${currency} on ${site} is above ${given.name}'s limits, so it waits for ${run.secrets.owner}'s approval in Approvals.` });
+          const { amount, currency, newSite, aboveLimits } = typed.waiting;
+          const { owner } = run.secrets;
+          end({
+            done: false,
+            said: newSite
+              ? `${given.name} doesn't pay on ${site} yet${aboveLimits ? ", and the payment is above its limits" : ""}, so the payment of ${amount} ${currency} waits for ${owner}'s approval in Approvals.`
+              : `The payment of ${amount} ${currency} on ${site} is above ${given.name}'s limits, so it waits for ${owner}'s approval in Approvals.`,
+          });
           return { ok: false, result: "The run ends here." };
         }
-        if (given.kind === "card") paid = true;
         if (!concealed.some(({ value }) => value === typed.value)) concealed.push({ value: typed.value, mark: `[${given.name} ${String(input.part)}]` });
-        return { ok: true, result: landed(await session!.typeIn(index, typed.value)) };
+        const view = await session!.typeIn(index, typed.value, given.kind === "card" ? new URL(page.url).origin : undefined);
+        // Only a card typed in lets the run click to pay.
+        if (given.kind === "card") paid = true;
+        return { ok: true, result: landed(view) };
       }
       if (!run.kind.tools.includes(name) || name === "finish") return { ok: false, result: `There is no tool ${name}.` };
       if (name === "read") return { ok: true, result: landed(await session!.read()) };
@@ -488,11 +510,32 @@ export async function browse(
     budget,
     now: payload.now,
     login,
-    ...(given.length > 0 && typed !== undefined && { secrets: { given, typed, owner: payload.owner } }),
+    ...(given.length > 0 && typed !== undefined && { secrets: { given, typed, owner: payload.owner, asked: { goal, values, secrets: given.map(({ name }) => name) } } }),
   });
   if (verdict === "capReached") return { ok: false, result: "Browsing stopped at the spend cap.", events, cost };
   const browsing: Browsing = { site: siteOf(url)!, said: verdict.said };
   return { ok: verdict.done, result: `${verdict.done ? "Done" : "Not done"}: ${verdict.said}`, events: [...events, { type: "browsed", browsing }], cost };
+}
+
+/**
+ * Goes back to pay a payment its human approved (#171), in a fresh run: browses the page where it
+ * waited, in the human's profile, with the goal, values and secrets the run that asked was given,
+ * told what was approved, and ends with what it did, which Duva reads beside the payment it made or not.
+ */
+export async function* runPayment(
+  payload: RunPayload,
+  { models, browser, login, secrets }: { models: Models; browser: Browser | undefined; login: LoginFetcher; secrets: SecretTyper },
+): AsyncGenerator<RunEvent> {
+  const { page, goal, values, secrets: named, cardName, amount, currency, site, for: what } = payload.payment!;
+  if (browser === undefined || payload.browsing === undefined) {
+    yield { type: "browsed", browsing: { site, said: "Duva has no browser here to go back to the page in." } };
+    return yield { type: "end", outcome: "answered" };
+  }
+  // The amount is what the page asks, which the run gives, so one that changed since waits again.
+  const approved = `${payload.owner} approved paying ${amount} ${currency} with ${cardName}, for ${what}, which waited for them: pay it on this page, and nothing more. Give fillSecret the amount the page asks now: if it isn't ${amount} ${currency}, Duva has the new one wait for approval.`;
+  const { events } = await browse({ url: page, goal: `${approved} The goal it was paying for: ${goal}`, values, secrets: named }, { payload, models, browser, login, secrets, budget: payload.budget });
+  yield* events;
+  yield { type: "end", outcome: "answered" };
 }
 
 /** What the run unsubscribing on a sender's page is told. */

@@ -235,7 +235,7 @@ export const operations = [
         "in": "body",
         "type": "boolean",
         "required": false,
-        "description": "Whether the mailbox agents may pay with their humans' cards while they browse, each card only within the per-payment and per-month limits its human set, and above them only once its human approves. A card without limits never pays. On by default; off, no card pays."
+        "description": "Whether the mailbox agents may pay with their humans' cards while they browse, each card only on its sites, within the per-payment and per-month limits its human set, and elsewhere or above them only once its human approves. A card without limits never pays. On by default; off, no card pays."
       },
       {
         "name": "mailboxAgentSpendCap",
@@ -2682,7 +2682,7 @@ export const operations = [
     "path": "/secrets",
     "routeKey": "POST /secrets",
     "summary": "Keep a secret for your Coo to use, a login, a card or another value, under a name you give it.",
-    "description": "Give kind and name, and the parts of its kind: a login's username and password, and its totpSeed if the site asks for a one-time code, a card's number, expiry, cvc and cardholder, or another value's value. Each value is encrypted with a KMS key of the deployment's own, in its region. A card pays only within the limits you set on it, with currency, perPayment and perMonth: until then it doesn't pay. Names are your own, each used once. Only humans keep secrets, at most 100.",
+    "description": "Give kind and name, and the parts of its kind: a login's username and password, and its totpSeed if the site asks for a one-time code, a card's number, expiry, cvc and cardholder, or another value's value. Each value is encrypted with a KMS key of the deployment's own, in its region. A card pays only within the limits you set on it, with currency, perPayment and perMonth: until then it doesn't pay. It pays on its own only on the sites you name with sites, such as sj.se, and their subdomains, by the address the browser reports for the page: a payment on any other site waits for your approval. Names are your own, each used once. Only humans keep secrets, at most 100.",
     "signIn": true,
     "command": [
       "secrets",
@@ -2779,6 +2779,13 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "The most a card pays in a month without your approval."
+      },
+      {
+        "name": "sites",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "The sites a card pays on, each as a domain such as sj.se, or a page's address there, and their subdomains. Without them, each of its payments waits for your approval."
       }
     ]
   },
@@ -2832,7 +2839,7 @@ export const operations = [
     "path": "/secrets/{secret}",
     "routeKey": "PATCH /secrets/{secret}",
     "summary": "Rename a secret, replace its parts, or set a card's limits.",
-    "description": "Give name to rename it. Give any of its kind's parts to replace them, each as a whole: a part you leave out stays as it was. For a card, give currency, perPayment and perMonth together to set its limits, or null for each to clear them, after which it doesn't pay. A secret's kind stays what it was.",
+    "description": "Give name to rename it. Give any of its kind's parts to replace them, each as a whole: a part you leave out stays as it was. For a card, give currency, perPayment and perMonth together to set its limits, or null for each to clear them, after which it doesn't pay. Add and remove a card's sites with their own operations. A secret's kind stays what it was.",
     "signIn": true,
     "command": [
       "secrets",
@@ -2966,12 +2973,70 @@ export const operations = [
     ]
   },
   {
+    "operationId": "addCardSite",
+    "method": "post",
+    "path": "/secrets/{secret}/sites",
+    "routeKey": "POST /secrets/{secret}/sites",
+    "summary": "Add a site a card pays on.",
+    "description": "Give site as its domain, such as sj.se, or the address of a page there. The card then pays on it and its subdomains on its own, within its limits, by the address the browser reports for the page. An ending anyone's site is under, such as co.uk, isn't a site. A card names at most 20. Adding one it names already changes nothing.",
+    "signIn": true,
+    "command": [
+      "secrets",
+      "add-site"
+    ],
+    "options": [
+      {
+        "name": "secret",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The secret's ID."
+      },
+      {
+        "name": "site",
+        "in": "body",
+        "type": "string",
+        "required": true,
+        "description": "The site's domain, such as sj.se, or the address of a page there."
+      }
+    ]
+  },
+  {
+    "operationId": "removeCardSite",
+    "method": "delete",
+    "path": "/secrets/{secret}/sites/{site}",
+    "routeKey": "DELETE /secrets/{secret}/sites/{site}",
+    "summary": "Remove a site a card pays on.",
+    "description": "From then on, each of its payments there waits for your approval, as on any site it doesn't name. Removing one it doesn't name changes nothing.",
+    "signIn": true,
+    "command": [
+      "secrets",
+      "remove-site"
+    ],
+    "options": [
+      {
+        "name": "secret",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The secret's ID."
+      },
+      {
+        "name": "site",
+        "in": "path",
+        "type": "string",
+        "required": true,
+        "description": "The site, as the card names it, such as sj.se."
+      }
+    ]
+  },
+  {
     "operationId": "useSecret",
     "method": "post",
     "path": "/secrets/{secret}/use",
     "routeKey": "POST /secrets/{secret}/use",
     "summary": "Answer a part of a secret for a browsing run of your human's Coo to type into a page.",
-    "description": "Only a browsing run of a human's own Coo can call it, with its run's token, which never reaches the model: Duva types what it answers into the page, outside the model. Each use is recorded in the secret's history, with the site and the run. A login's code part is the one-time code its seed gives now. A card's parts need the amount and currency of the payment: it pays only within the card's per-payment and per-month limits, while the organization lets mailbox agents pay. Above a limit, the payment waits in its human's Approvals, which is 202, and a fresh run pays once they approve it. A run that already paid on the site with the card, then ran again, is 409, so a retry never pays twice.",
+    "description": "Only a browsing run of a human's own Coo can call it, with its run's token, which never reaches the model: Duva types what it answers into the page, outside the model. Each use is recorded in the secret's history, with the site and the run. A login's code part is the one-time code its seed gives now. A card's parts need the amount and currency of the payment, and the page's address as the browser reports it: it pays only on the card's sites, within its per-payment and per-month limits, while the organization lets mailbox agents pay. On another site, or above a limit, the payment waits in its human's Approvals, which is 202, keeping the page and what the run was given, and once they approve it, a fresh run goes back to the page and pays. A run that already paid on the site with the card, then ran again, is 409, so a retry never pays twice.",
     "signIn": true,
     "command": [
       "secrets",
@@ -3019,6 +3084,34 @@ export const operations = [
         "type": "string",
         "required": false,
         "description": "For a card, what the payment is for, in a few words."
+      },
+      {
+        "name": "page",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "For a card, the address of the page it goes into, as the browser reports it, on the site. The card pays only where its host is one of the card's sites or under one, and a payment that waits keeps it, for the fresh run that goes back once it is approved."
+      },
+      {
+        "name": "goal",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "For a card, the browsing run's goal, which a payment that waits keeps until it is decided, with values and secrets, so the fresh run that goes back to the page is given them again."
+      },
+      {
+        "name": "values",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "For a card, the values the browsing run may type."
+      },
+      {
+        "name": "secrets",
+        "in": "body",
+        "type": "strings",
+        "required": false,
+        "description": "For a card, the names of the secrets the browsing run may have typed in."
       }
     ]
   },
@@ -4917,7 +5010,7 @@ export const operations = [
     "path": "/payments",
     "routeKey": "GET /payments",
     "summary": "List your Coo's payments, newest first, those waiting for your approval among them.",
-    "description": "Coo pays with one of your cards on its own only within the limits you set on it. A payment above them waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.",
+    "description": "Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.",
     "signIn": true,
     "command": [
       "payments",
@@ -4930,8 +5023,8 @@ export const operations = [
     "method": "post",
     "path": "/payments/{payment}/approve",
     "routeKey": "POST /payments/{payment}/approve",
-    "summary": "Approve a payment waiting for you, so Coo's next run on the site pays it.",
-    "description": "The next browsing run that pays its amount on the site with the card pays it, outside the card's limits, once: ask Coo again for that. It still counts toward the card's month. Recorded in the mailbox's change feed under you.",
+    "summary": "Approve a payment waiting for you, so Coo goes back to the page and pays it.",
+    "description": "A fresh browsing run of your Coo's goes back to the page where the payment waited and pays it, outside the card's limits, once, as would any later run that pays its amount on the site with the card. It still counts toward the card's month. A payment on a site the card didn't name adds the site to the card, so it pays there from then on. If the run can't pay, as when the page expired, Coo's activity says why. Recorded in the mailbox's change feed under you.",
     "signIn": true,
     "command": [
       "payments",

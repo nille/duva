@@ -18,7 +18,7 @@ export interface MailboxChange {
 export const approvalChanges = new Set<Change["type"]>(["approvalAsked", "approvalWithdrawn", "approvalDecided", "approvalUndone", "messageSent", "sendFailed", "sendUnclear"]);
 
 /** The changes to Coo's payments, which Approvals shows while one waits and Coo's bubble says (ADR-0039). */
-export const paymentChanges = new Set<Change["type"]>(["paymentAsked", "paymentDecided", "paymentMade"]);
+export const paymentChanges = new Set<Change["type"]>(["paymentAsked", "paymentDecided", "paymentMade", "paymentNotMade"]);
 
 /** The changes that alter what a mailbox's threads show: mail in or out, read state, labels, Remind me and erasure. */
 export const mailChanges = new Set<Change["type"]>(["messageReceived", "messageSent", "threadRead", "threadUnread", "threadLabelsChanged", "reminderSet", "reminderCancelled", "threadBack", "threadErased"]);
