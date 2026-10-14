@@ -7127,7 +7127,8 @@ components:
               type: string
               description: >-
                 What the human asked: the first 120 characters of their words,
-                ending in … where they went on.
+                ending in … where they went on. Absent for a turn that came by
+                mail, whose words are the mail's (ADR-0040).
             threads:
               type: array
               items:
@@ -7210,7 +7211,11 @@ components:
               description: With verifying, whether Coo mailed a code now, or the request waits for one it mailed the sender within the hour.
             results:
               type: array
-              description: With answered and followedUp, what Coo said it did, each action with how it went, as its mail said it.
+              description: >-
+                With answered and followedUp, what Coo did, each action with how
+                it went, in fixed text. Only Coo's mail says what a run, a page
+                or the mail wrote, such as browsing's sentence or a web search's
+                query (ADR-0040).
               items:
                 type: string
             draft:

@@ -3841,7 +3841,7 @@ export interface components {
             agent: string;
             /** @description The ID of the human who asked. */
             human: string;
-            /** @description What the human asked: the first 120 characters of their words, ending in … where they went on. */
+            /** @description What the human asked: the first 120 characters of their words, ending in … where they went on. Absent for a turn that came by mail, whose words are the mail's (ADR-0040). */
             asked?: string;
             /** @description The IDs of the threads the agent read or changed, in the order it first touched them. */
             threads: string[];
@@ -3888,7 +3888,7 @@ export interface components {
             event: "refused" | "verifying" | "wrongCode" | "lateCode" | "verified" | "neverVerified" | "answered" | "followedUp" | "replyFailed";
             /** @description With verifying, whether Coo mailed a code now, or the request waits for one it mailed the sender within the hour. */
             codeMailed?: boolean;
-            /** @description With answered and followedUp, what Coo said it did, each action with how it went, as its mail said it. */
+            /** @description With answered and followedUp, what Coo did, each action with how it went, in fixed text. Only Coo's mail says what a run, a page or the mail wrote, such as browsing's sentence or a web search's query (ADR-0040). */
             results?: string[];
             /** @description With followedUp, the ID of the draft whose send waited. */
             draft?: string;

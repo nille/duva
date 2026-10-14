@@ -176,16 +176,16 @@ test("Think harder answers no turn erased with mail its run read", budget, async
 test("a turn that read two threads goes when either goes, and the other's erasure later finds it gone", budget, async () => {
   let threads = { lisbon: "", porto: "" };
   const { model } = scripted(
-    () => [use("getThread", { thread: threads.lisbon }), use("getThread", { thread: threads.porto })],
-    () => [{ text: "Lisbon from 2 November, then Porto on the 6th." }],
     () => [use("getThread", { thread: threads.porto })],
     () => [{ text: "Hotel Ribeira." }],
+    () => [use("getThread", { thread: threads.lisbon }), use("getThread", { thread: threads.porto })],
+    () => [{ text: "Lisbon from 2 November, then Porto on the 6th." }],
   );
   const bookings = await withBookings({ model });
   threads = bookings.threads;
   const { ask, said, trash, emptyTrash } = bookings;
-  await ask("What's my trip?");
   await ask("Where in Porto?");
+  await ask("What's my trip?");
 
   await trash(threads.lisbon);
   await emptyTrash();
@@ -193,7 +193,7 @@ test("a turn that read two threads goes when either goes, and the other's erasur
   await trash(threads.porto);
   await emptyTrash();
 
-  expect(afterLisbon).toEqual(["human erased", "agent erased", "human: Where in Porto?", "agent: Hotel Ribeira."]);
+  expect(afterLisbon).toEqual(["human: Where in Porto?", "agent: Hotel Ribeira.", "human erased", "agent erased"]);
   expect(await said()).toEqual(["human erased", "agent erased", "human erased", "agent erased"]);
 });
 
@@ -210,13 +210,13 @@ test("a turn goes with a thread its run only listed", budget, async () => {
 
 test("a turn goes with a thread its text names by ID, or by the ID of one of its messages", budget, async () => {
   const ids = { thread: "", message: "" };
-  const { model } = scripted(() => [{ text: `See thread ${ids.thread}.` }], () => [{ text: `See message ${ids.message}.` }], () => [{ text: "Hello." }]);
+  const { model } = scripted(() => [{ text: "Hello." }], () => [{ text: `See message ${ids.message}.` }], () => [{ text: `See thread ${ids.thread}.` }]);
   const { linus, params, threads, ask, said, trash, emptyTrash } = await withBookings({ model });
   const { data: read } = await linus.GET("/mailboxes/{mailbox}/threads/{thread}", { params: { path: { ...params.path, thread: threads.porto } } });
   Object.assign(ids, { thread: threads.lisbon, message: read!.messages[0]!.id });
-  await ask("Where is Lisbon?");
-  await ask("Where is Porto?");
   await ask("Hi");
+  await ask("Where is Porto?");
+  await ask("Where is Lisbon?");
 
   await trash(threads.lisbon);
   await emptyTrash();
@@ -224,8 +224,8 @@ test("a turn goes with a thread its text names by ID, or by the ID of one of its
   await trash(threads.porto);
   await emptyTrash();
 
-  expect(afterLisbon).toEqual(["human erased", "agent erased", "human: Where is Porto?", `agent: See message ${ids.message}.`, "human: Hi", "agent: Hello."]);
-  expect(await said()).toEqual(["human erased", "agent erased", "human erased", "agent erased", "human: Hi", "agent: Hello."]);
+  expect(afterLisbon).toEqual(["human: Hi", "agent: Hello.", "human: Where is Porto?", `agent: See message ${ids.message}.`, "human erased", "agent erased"]);
+  expect(await said()).toEqual(["human: Hi", "agent: Hello.", "human erased", "agent erased", "human erased", "agent erased"]);
 });
 
 test("a turn given a memory learned from a thread goes with the thread, as what it says may come from it", budget, async () => {
@@ -236,6 +236,55 @@ test("a turn given a memory learned from a thread goes with the thread, as what 
   await emptyTrash();
 
   expect(await said()).toEqual([...kept, "human erased", "agent erased", "human erased", "agent erased"]);
+});
+
+/**
+ * Linus's bookings, and a conversation where Coo read the Lisbon booking's thread to answer where
+ * he stays, then answered whether it is near the sea from that answer alone, reading nothing. The
+ * script goes on with `more`.
+ */
+async function answeredFromLisbon(...more: ((request: Request) => ModelEvent[] | Promise<ModelEvent[]>)[]) {
+  let thread = "";
+  const { model, requests } = scripted(
+    () => [use("getThread", { thread })],
+    () => [{ text: "At Casa Azulejo, in room 12, from 2 November." }],
+    () => [{ text: "Casa Azulejo is in Alfama, a walk from the river." }],
+    ...more,
+  );
+  const bookings = await withBookings({ model });
+  thread = bookings.threads.lisbon;
+  await bookings.ask("Where am I staying in Lisbon?");
+  await bookings.ask("Is it near the sea?");
+  return { ...bookings, requests };
+}
+
+test("erasing a thread erases the turns that answered with a turn that read it in view, though their runs read nothing", budget, async () => {
+  const { threads, requests, ask, said, trash, emptyTrash } = await answeredFromLisbon(() => [{ text: "Hello." }]);
+  const before = await said();
+  await trash(threads.lisbon);
+
+  await emptyTrash();
+  await ask("Hi");
+
+  expect(before.slice(2)).toEqual(["human: Is it near the sea?", "agent: Casa Azulejo is in Alfama, a walk from the river."]);
+  expect(await said()).toEqual(["human erased", "agent erased", "human erased", "agent erased", "human: Hi", "agent: Hello."]);
+  const next = JSON.stringify(requests.at(-1));
+  for (const words of ["Azulejo", "Alfama", "river"]) expect(next).not.toContain(words);
+});
+
+test("a turn two steps on stays: it had in view a turn that answered from the one that read the thread, which was past the 20 turns Coo reads back", budget, async () => {
+  const { threads, ask, said, trash, emptyTrash } = await answeredFromLisbon(
+    ...Array.from({ length: 9 }, () => () => [{ text: "Hello." }]),
+    () => [{ text: "You stay in Alfama." }],
+  );
+  // Nine more asks, so the turn that read the thread falls out of the 20 turns the next run reads back, and the one that answered from it doesn't.
+  for (let turn = 0; turn < 9; turn++) await ask("Hi");
+  await ask("Where do I stay?");
+
+  await trash(threads.lisbon);
+  await emptyTrash();
+
+  expect(await said()).toEqual([...Array.from({ length: 11 }, () => ["human erased", "agent erased"]).flat(), "human: Where do I stay?", "agent: You stay in Alfama."]);
 });
 
 test("a request mailed to Coo whose run read a thread goes with it, with the turn that answered it and the mail it came in", budget, async () => {

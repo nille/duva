@@ -137,7 +137,7 @@ test("an allowed sender whose DMARC passes asks Coo by mail, and gets its answer
   expect(threads!.threads).toEqual([]);
   expect((await events()).map(({ type, summary }) => [type, summary])).toEqual([
     ["mailToCoo", "Coo mailed linus@example.org its answer, with what it did."],
-    ["conversationTurn", "linus@example.org mailed Coo “Subject: Question\n\nWhat's new?”"],
+    ["conversationTurn", "linus@example.org mailed Coo something."],
   ]);
 });
 
@@ -184,7 +184,7 @@ test("a listed sender whose DMARC fails gets a code, and the reply that brings i
   expect(await turns()).toMatchObject([{ from: "human", byMail: "assistant@example.net", text: "Subject: Flight\n\nWhen does Linus fly?" }, { from: "agent" }]);
   expect((await events()).map(({ summary }) => summary)).toEqual([
     "Coo mailed assistant@example.net its answer, with what it did.",
-    "assistant@example.net mailed Coo “Subject: Flight\n\nWhen does Linus fly?”",
+    "assistant@example.net mailed Coo something.",
     "assistant@example.net brought Coo's code back, so it took their request.",
     "assistant@example.net replied with another code than Coo mailed them, so their request still waits.",
     "Coo mailed assistant@example.net a code, to confirm a request was theirs.",
@@ -307,7 +307,7 @@ const draftsAndAsksToSend = () =>
 
 test("Coo's reply says what it did, and a later reply in the thread says how a send that waited for approval was decided", async () => {
   const { model } = draftsAndAsksToSend();
-  const { duva, linus, events } = await withCoo({ model });
+  const { duva, linus, coo, events } = await withCoo({ model });
 
   await duva.receive(request({ subject: "Lunch with Grace", text: "Ask Grace to lunch." }), { to: ["linus-coo@example.com"] });
 
@@ -322,7 +322,45 @@ test("Coo's reply says what it did, and a later reply in the thread says how a s
   expect(fromCoo[1]).toMatchObject({ to: [{ address: "linus@example.org" }], subject: "Re: Lunch with Grace" });
   expect(fromCoo[1]!.text).toContain('The mail "Lunch" to grace@example.org was sent.');
   expect(fromCoo[1]!.references).toContain("<request-1@example.org>");
-  expect((await events())[0]).toMatchObject({ type: "mailToCoo", summary: "Coo mailed linus@example.org that the send it waited on was sent." });
+  const [followedUp] = await events();
+  expect(followedUp).toMatchObject({ type: "mailToCoo", summary: "Coo mailed linus@example.org that the send it waited on was sent." });
+  const { data: detail } = await linus.GET("/agents/{agent}/events/{event}", { params: { path: { agent: coo.id, event: followedUp!.id } } });
+  expect(detail!.change).toMatchObject({ event: "followedUp", outcome: "sent", results: ["The mail I wrote was sent."] });
+});
+
+test("Coo's activity and the change feed keep none of a request's words, nor what its browsing said, what it searched for or why Duva refused it, while its reply says them", async () => {
+  // Coo's steps, the browsing run's, and the web search reader's, told apart by the tools each has.
+  const steps = [
+    () => [use("labelAllMailboxesThreads", { threads: ["Casa Azulejo"], add: ["trips"], remove: [] }), use("bookTable", { at: "Taberna Azul" })],
+    () => [use("browse", { url: "https://tables.example.net/book", goal: "Book a table for two near Casa Azulejo on Friday." })],
+    () => [use("searchWeb", { query: "restaurants near Casa Azulejo Alfama" })],
+    () => [{ text: "I booked Taberna Azul for Friday." }],
+  ];
+  let step = 0;
+  const model: Model = async function* (request) {
+    const browsing = request.tools.some(({ name }) => name === "finish");
+    const events = browsing ? [use("finish", { done: true, said: "It booked a table for two at Taberna Azul, at eight." })] : request.tools.length === 0 ? [{ text: "Taberna Azul is near." }] : (steps[step++]?.() ?? [{ text: "Done." }]);
+    for (const event of events) yield event;
+    yield { usage: { inputTokens: 1000, outputTokens: 100 } };
+  };
+  const { duva, linus, mailbox, coo, events } = await withCoo({ model, webSearch: async () => [{ title: "Taberna Azul", url: "https://taberna.example.pt/", text: "A tavern in Alfama." }] });
+  await duva.webServer("tables.example.net", { answer: async () => new Response("<!doctype html><html><head><title>Tables</title></head><body><p>Booked.</p></body></html>", { headers: { "content-type": "text/html" } }) });
+  const labelling = "Add labels to threads in All mailboxes, and remove them, each in its own mailbox";
+  const forwarded = "---------- Forwarded message ---------\nFrom: Casa Azulejo <bookings@casa-azulejo.example.pt>\nSubject: Your stay in Lisbon\n\nCasa Azulejo has you for three nights from 2 November 2026, in room 12.";
+
+  await duva.receive(request({ subject: "Dinner in Lisbon", text: `Book a table near my hotel for Friday.\n\n${forwarded}` }), { to: ["linus-coo@example.com"] });
+
+  const [answer] = await sentMail(duva);
+  expect(answer!.text).toContain(
+    `What I did:\n- Not done: ${labelling}. None of the mailboxes you can read has a thread "Casa Azulejo", so no thread was changed. List All mailboxes' threads to find their IDs.\n- Browsed example.net: It booked a table for two at Taberna Azul, at eight.\n- Searched the web for "restaurants near Casa Azulejo Alfama".`,
+  );
+  const listed = await events();
+  const details = await Promise.all(listed.map(async ({ id }) => (await linus.GET("/agents/{agent}/events/{event}", { params: { path: { agent: coo.id, event: id } } })).data!));
+  expect(listed.map(({ summary }) => summary)).toEqual(["Coo mailed linus@example.org its answer, with what it did.", "linus@example.org mailed Coo something."]);
+  expect(details[0]!.change).toMatchObject({ type: "mailToCoo", event: "answered", results: [`Not done: ${labelling}.`, "Browsed example.net.", "Searched the web."] });
+  const { data: feed } = await linus.GET("/mailboxes/{mailbox}/changes", { params: { path: { mailbox: mailbox.id } } });
+  const kept = JSON.stringify([listed, details, feed]);
+  for (const words of ["Dinner", "Lisbon", "hotel", "Azulejo", "room 12", "Taberna", "table for two", "Alfama", "bookTable"]) expect(kept).not.toContain(words);
 });
 
 test("a send that waited and was rejected is followed up once, saying it wasn't sent", async () => {
@@ -405,14 +443,17 @@ const fill = (element: number, part: string) => () => [use("fillSecret", { eleme
 const budget = { timeout: 45_000 };
 
 test("a payment above its card's limits waits, Coo's reply says so, and once it is approved, later replies say Coo goes back to pay it, then that it paid, with no one asking again", budget, async () => {
-  const { duva, fromCoo, approve } = await withCheckout([fill(1, "number"), fill(2, "expiry"), fill(3, "cvc"), () => [use("click", { element: 4 })], () => [use("finish", { done: true, said: "It paid for the beans." })]]);
+  const { duva, linus, coo, events, fromCoo, approve } = await withCheckout([fill(1, "number"), fill(2, "expiry"), fill(3, "cvc"), () => [use("click", { element: 4 })], () => [use("finish", { done: true, said: "It paid for the beans." })]]);
 
   await duva.receive(request({ subject: "Coffee", text: "Buy the beans in my cart." }), { to: ["linus-coo@example.com"] });
+  const [answered] = await events();
+  const { data: detail } = await linus.GET("/agents/{agent}/events/{event}", { params: { path: { agent: coo.id, event: answered!.id } } });
   await approve();
 
   const mails = await fromCoo();
   expect(mails).toHaveLength(3);
   expect(mails[0]!.text).toContain("Paying 149.00 SEK on example.net with Visa, for Coffee beans, 1 kg: it's above the card's limits, so it waits for your approval. I'll write again once it's decided.");
+  expect(detail!.change).toMatchObject({ event: "answered", results: ["Browsed example.net.", "Paying 149.00 SEK on example.net with Visa: it's above the card's limits, so it waits for your approval. I'll write again once it's decided."] });
   expect(mails.slice(1).map(({ subject, to }) => ({ subject, to }))).toEqual([
     { subject: "Re: Coffee", to: [{ address: "linus@example.org", name: "" }] },
     { subject: "Re: Coffee", to: [{ address: "linus@example.org", name: "" }] },
@@ -423,7 +464,7 @@ test("a payment above its card's limits waits, Coo's reply says so, and once it 
 });
 
 test("a payment approved after its page expired is followed up with what the run that went back to pay it said", budget, async () => {
-  const { duva, checkout, fromCoo, approve } = await withCheckout([() => [use("finish", { done: false, said: "The checkout had expired, so it couldn't pay." })]]);
+  const { duva, linus, coo, events, checkout, fromCoo, approve } = await withCheckout([() => [use("finish", { done: false, said: "The checkout had expired, so it couldn't pay." })]]);
   await duva.receive(request({ subject: "Coffee", text: "Buy the beans in my cart." }), { to: ["linus-coo@example.com"] });
   checkout.expired = true;
 
@@ -434,6 +475,9 @@ test("a payment approved after its page expired is followed up with what the run
   expect(mails.slice(1).map(({ text }) => text!.split("\n")[0])).toEqual(
     expect.arrayContaining(["You approved paying 149.00 SEK on example.net. I'm going back to the page to pay it, and I'll write again once I have.", "I went back to pay 149.00 SEK on example.net, as approved, but couldn't: The checkout had expired, so it couldn't pay."]),
   );
+  const followedUp = (await events()).filter(({ summary }) => summary.includes("that it couldn't pay"));
+  const { data: detail } = await linus.GET("/agents/{agent}/events/{event}", { params: { path: { agent: coo.id, event: followedUp[0]!.id } } });
+  expect(detail!.change).toMatchObject({ event: "followedUp", outcome: "unpaid", results: ["I went back to pay 149.00 SEK on example.net, as approved, but couldn't."] });
 });
 
 test("mail that brings numbers but not the code counts as an attempt, so forged mail can't guess its way to the code", async () => {

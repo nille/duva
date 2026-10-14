@@ -3,7 +3,9 @@
 // conversation Lambda, through the web app's CloudFront distribution, which checks the human, gives
 // the run its token, runs the agent on AgentCore and streams what it says and does back as it goes.
 // The turns are kept in the human's partition, so they go with them, and each names the threads its
-// run read, so it goes with them too, with the human's turn it answered (#172).
+// run read, so it goes with them too, with the human's turn it answered (#172). It also names the
+// threads that the turns its run had in view read themselves, since its answer may repeat theirs,
+// but not those they went with in turn, so erasing a thread reaches no further than a run reads back (#178).
 import { randomUUID } from "node:crypto";
 import { BatchWriteCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components, ConversationEvent } from "@duva/openapi";
@@ -27,6 +29,10 @@ export type ConversationTurn = components["schemas"]["ConversationTurn"];
 
 export type { AgentRuntime, ConversationEvent };
 
+
+const sourceKey = ({ mailbox, thread }: TurnSource) => `${mailbox}#${thread}`;
+/** The sources, each once. */
+const distinct = (sources: TurnSource[]) => [...new Map(sources.map((source) => [sourceKey(source), source])).values()];
 
 /** The most turns a conversation shows, and the most the agent reads back. */
 const turnsKept = 100;
@@ -63,6 +69,8 @@ export interface PreparedTurn {
   cap: number;
   /** Whether it answers the human's last turn again, with the harder model. */
   harder?: boolean;
+  /** The threads the turns in its run's history read themselves, which it goes with too, absent from a turn prepared before #178. */
+  inView?: TurnSource[];
 }
 
 /**
@@ -95,8 +103,10 @@ export async function prepareTurn(
   if (!harder && (words === "" || words.length > longestWords) && mail === undefined) return refusal(400, `Ask Coo something, in at most ${longestWords} characters.`);
   // Thinking harder answers the human's last turn again, with what came before it, unless that turn
   // or the last answer was erased with mail its run read. No run reads an erased turn.
-  const recent = await turnsOf(table, human.id, turnsRead + 2);
-  const turns = recent.filter(({ erased }) => erased !== true);
+  const stored = await storedTurns(table, human.id, turnsRead + 2);
+  const recent = stored.map(({ turn }) => turn);
+  const readable = stored.filter(({ turn }) => turn.erased !== true);
+  const turns = readable.map(({ turn }) => turn);
   const asking = turns.findLastIndex(({ from }) => from === "human");
   const erasedLast = recent.at(-1)?.erased === true || recent.findLast(({ from }) => from === "human")?.erased === true;
   if (harder && (asking === -1 || erasedLast || turns.at(-1)!.from !== "agent")) return refusal(409, "There's no answer to think harder about. Ask Coo something first.");
@@ -111,7 +121,8 @@ export async function prepareTurn(
   const started = await startRun(table, { agent, mailbox, mailboxes: own, owner: human.email, region, apiUrl, job: harder ? "harder" : "conversation" });
   if ("refused" in started) return refusal(409, started.refused);
   const { start, month, cap } = started;
-  const history = (harder ? turns.slice(0, asking) : turns).slice(-turnsRead);
+  const viewed = (harder ? readable.slice(0, asking) : readable).slice(-turnsRead);
+  const history = viewed.map(({ turn }) => turn);
   const turn = harder
     ? turns[asking]!
     : await addTurn(table, human, { from: "human", ...(mailbox !== undefined && { mailbox: mailbox.id }), text: words, actions: [], ...(mail !== undefined && { byMail: mail.from }) }, { ...(mail !== undefined && { request: mail.request }) });
@@ -120,7 +131,7 @@ export async function prepareTurn(
     history: history.map(({ from, text, actions }) => ({ from, text, ...(from === "agent" && actions.length > 0 && { did: actionsRead(actions, "you") }) })),
     words: mail === undefined ? turn.text : mailedWords(human, mail, turn.text),
   };
-  return { payload, turn, human, agent, month, cap, ...(harder && { harder }) };
+  return { payload, turn, human, agent, month, cap, ...(harder && { harder }), inView: distinct(viewed.flatMap(({ read }) => read)) };
 }
 
 /** What the run reads of a request by mail: who sent it, its text and what came beside it, as far as Coo reads one. */
@@ -136,17 +147,18 @@ const mailedWords = (human: Human, { from, beside }: ByMail, text: string) =>
 
 /**
  * Runs the prepared turn on the runtime, saying what happens as it goes, and writes the agent's
- * turn when it ends, naming the threads its run read and its text names by ID, with the turn's
- * routing, which it keeps with the words' embedding (#132). If one of those threads was erased
- * meanwhile, the turn and the human's it answered are erased as they are written (#172).
+ * turn when it ends, naming the threads its run read and its text names by ID, and those the turns
+ * it had in view read themselves (#178), with the turn's routing, which it keeps with the words'
+ * embedding (#132). If one of those threads was erased meanwhile, the turn and the human's it
+ * answered are erased as they are written (#172).
  */
-export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Embedder, { payload, turn, human, agent, month, cap, harder }: PreparedTurn): AsyncGenerator<ConversationEvent> {
+export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Embedder, { payload, turn, human, agent, month, cap, harder, inView = [] }: PreparedTurn): AsyncGenerator<ConversationEvent> {
   yield { type: "turn", turn };
   // The threads it read are found as it reads them, so one erased before it ends is still found.
   const mailboxes = payload.mailboxes.map(({ id }) => id);
   const sources = new Map<string, TurnSource>();
   const read = async (ids: string[]) => {
-    for (const source of await threadsNamed(table, mailboxes, ids)) sources.set(`${source.mailbox}#${source.thread}`, source);
+    for (const source of await threadsNamed(table, mailboxes, ids)) sources.set(sourceKey(source), source);
   };
   const ran = runMailboxAgent(table, { agent, payload, runtime, month, cap, turn: turn.id, read });
   let next = await ran.next();
@@ -168,17 +180,14 @@ export async function* runTurn(table: Table, runtime: AgentRuntime, embedder: Em
     ...(searches && { searches }),
     ...(browsed && { browsed }),
   };
-  const written = await addTurn(table, human, answer, { after: turn.at });
   await read(idsIn(text));
-  const kept = await keepTurnSources(table, { human: human.id, asked: turn, answer: written }, [...sources.values()]);
+  const own = [...sources.values()];
+  const written = await addTurn(table, human, answer, { after: turn.at, read: own });
+  const kept = await keepTurnSources(table, { human: human.id, asked: turn, answer: written }, distinct([...own, ...inView]));
   if (!kept) await eraseTurns(table, human.id, [turn, written]);
   const answered = kept ? written : erasedTurn(written);
   // Recorded before the stream ends, so a reader that stops at done still leaves it in the feed.
-  const change = {
-    ...turnTaken(agent, human, turn.text, next.value, payload.model.model, harder),
-    ...(turn.byMail !== undefined && { byMail: turn.byMail }),
-    ...(payload.mailbox === undefined && { allMailboxes: true }),
-  };
+  const change = { ...turnTaken(agent, human, turn, next.value, payload.model.model, harder), ...(payload.mailbox === undefined && { allMailboxes: true }) };
   await recordChanges(table, mailboxFeed(recordingMailbox(payload)), { by: agent.id, changes: [change], items: [] });
   yield { type: "done", turn: answered };
   await keepRouting(table, embedder, human, turn, { month, harder, decision, handover, alone: payload.model.model === payload.model.harder });
@@ -189,15 +198,16 @@ const askedKept = 120;
 
 /**
  * The change a turn records in the mailbox's feed, so the agent's activity shows it: what the human
- * asked, what the agent touched, the models that answered, and what it cost (#133).
+ * asked, or who mailed it, what the agent touched, the models that answered, and what it cost (#133).
+ * A request by mail's words are the mail's, which go with it, so its change keeps none (#178).
  */
-function turnTaken(agent: Agent, human: Human, words: string, { actions, outcome, cost, handover }: RunEnd, first: MailboxAgentModel, harder?: boolean) {
+function turnTaken(agent: Agent, human: Human, { text: words, byMail }: ConversationTurn, { actions, outcome, cost, handover }: RunEnd, first: MailboxAgentModel, harder?: boolean) {
   const touched = (pick: (action: AgentAction) => string[]) => [...new Set(actions.filter(({ ok }) => ok).flatMap(pick))];
   return {
     type: "conversationTurn" as const,
     agent: agent.id,
     human: human.id,
-    asked: words.length > askedKept ? `${words.slice(0, askedKept)}…` : words,
+    ...(byMail === undefined ? { asked: words.length > askedKept ? `${words.slice(0, askedKept)}…` : words } : { byMail }),
     threads: touched(({ threads }) => threads ?? []),
     // Only the drafts it wrote, not those it read (#135).
     drafts: touched(({ operation, draft }) => (draft === undefined || !writing.has(operation) ? [] : [draft])),
@@ -338,13 +348,21 @@ export const actionsRead = (actions: AgentAction[], who = "You") =>
 
 /**
  * Writes a turn of the human's conversation, after the time given if any, and returns it. A request
- * by mail's turn keeps its ID, so the request goes with the turn.
+ * by mail's turn keeps its ID, so the request goes with the turn. An agent's turn keeps the threads
+ * its own run read, so the turns that have it in view go with them too (#178).
  */
-async function addTurn(table: Table, human: Human, turn: Omit<ConversationTurn, "id" | "at">, { after, request }: { after?: string; request?: string } = {}): Promise<ConversationTurn> {
+async function addTurn(
+  table: Table,
+  human: Human,
+  turn: Omit<ConversationTurn, "id" | "at">,
+  { after, request, read }: { after?: string; request?: string; read?: TurnSource[] } = {},
+): Promise<ConversationTurn> {
   const now = new Date();
   const at = new Date(after === undefined ? now : Math.max(now.getTime(), new Date(after).getTime() + 1)).toISOString();
   const written: ConversationTurn = { id: randomUUID(), at, ...turn };
-  await documents(table).send(new PutCommand({ TableName: table.name, Item: { ...turnKey(human.id, at, written.id), ...written, ...(request !== undefined && { request }) } }));
+  await documents(table).send(
+    new PutCommand({ TableName: table.name, Item: { ...turnKey(human.id, at, written.id), ...written, ...(request !== undefined && { request }), ...(read !== undefined && read.length > 0 && { read }) } }),
+  );
   return written;
 }
 
@@ -352,7 +370,10 @@ async function addTurn(table: Table, human: Human, turn: Omit<ConversationTurn, 
 const erasedTurn = ({ id, at, from }: Pick<ConversationTurn, "id" | "at" | "from">): ConversationTurn => ({ id, at, from, text: "", actions: [], erased: true });
 
 /** The last turns of the human's conversation, oldest first, those erased with mail they read among them. */
-export async function turnsOf(table: Table, human: string, limit: number): Promise<ConversationTurn[]> {
+export const turnsOf = async (table: Table, human: string, limit: number): Promise<ConversationTurn[]> => (await storedTurns(table, human, limit)).map(({ turn }) => turn);
+
+/** The last turns of the human's conversation as `turnsOf` gives them, each with the threads its own run read, none for an erased one's. */
+async function storedTurns(table: Table, human: string, limit: number): Promise<{ turn: ConversationTurn; read: TurnSource[] }[]> {
   const { Items = [] } = await documents(table).send(
     new QueryCommand({
       TableName: table.name,
@@ -363,25 +384,28 @@ export async function turnsOf(table: Table, human: string, limit: number): Promi
       ConsistentRead: true,
     }),
   );
-  return Items.reverse().map(({ id, at, from, mailbox, text, actions, outcome, model, decision, handover, harder, byMail, searches, browsed, erased }) =>
+  return Items.reverse().map(({ id, at, from, mailbox, text, actions, outcome, model, decision, handover, harder, byMail, searches, browsed, erased, read = [] }) =>
     erased === true
-      ? erasedTurn({ id, at, from })
-      : ({
-          id,
-          at,
-          from,
-          ...(mailbox !== undefined && { mailbox }),
-          text,
-          actions,
-          ...(outcome !== undefined && { outcome }),
-          ...(model !== undefined && { model }),
-          ...(decision !== undefined && { decision }),
-          ...(handover !== undefined && { handover }),
-          ...(harder !== undefined && { harder }),
-          ...(byMail !== undefined && { byMail }),
-          ...(searches !== undefined && { searches }),
-          ...(browsed !== undefined && { browsed }),
-        } as ConversationTurn),
+      ? { turn: erasedTurn({ id, at, from }), read: [] }
+      : {
+          turn: {
+            id,
+            at,
+            from,
+            ...(mailbox !== undefined && { mailbox }),
+            text,
+            actions,
+            ...(outcome !== undefined && { outcome }),
+            ...(model !== undefined && { model }),
+            ...(decision !== undefined && { decision }),
+            ...(handover !== undefined && { handover }),
+            ...(harder !== undefined && { harder }),
+            ...(byMail !== undefined && { byMail }),
+            ...(searches !== undefined && { searches }),
+            ...(browsed !== undefined && { browsed }),
+          } as ConversationTurn,
+          read: read as TurnSource[],
+        },
   );
 }
 

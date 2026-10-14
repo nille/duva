@@ -9,7 +9,9 @@
 // whose run reads its text, its forwarded mail and its attachments. Coo answers by mail from its
 // address, to the From address and never a Reply-To, in the request's thread, with what it did and
 // how each action went, and the disclosure. A send that waits for the human is followed up with
-// another mail in the thread once it is decided. Nothing is filed in any mailbox.
+// another mail in the thread once it is decided. Nothing is filed in any mailbox. Coo's activity
+// keeps what each mail said Coo did in fixed text, with none of what a run, a page or the mail
+// wrote, since the activity stays when the request and its turns are erased (#178).
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { operations } from "@duva/openapi";
@@ -247,54 +249,74 @@ async function run(runner: CooMailRunner, human: Human, request: CooRequest): Pr
           ? `${answer.text.trim()}\n\n${capRefusal(prepared.cap)}`.trim()
           : answer.text.trim();
   const results = answer === undefined || "statusCode" in prepared ? [] : await resultsOf(runner, human, request, prepared.turn.id, answer);
-  const text = results.length === 0 ? said : `${said}\n\nWhat I did:\n${results.map((line) => `- ${line}`).join("\n")}`;
+  const text = results.length === 0 ? said : `${said}\n\nWhat I did:\n${results.map(({ mailed }) => `- ${mailed}`).join("\n")}`;
   const sent = await mail(runner, human, request, { text });
   if (sent === undefined) {
     await moveRequest(table, request, "running", "failed");
     return;
   }
-  await noteMailToCoo(table, human, { request: request.id, from: request.from, event: "answered", results }, { items: [requestMoved(table, request, "running", "answered", { thread: [...request.thread, sent] }), systemMailRecord(table, sesIdOf(sent))] });
+  await noteMailToCoo(
+    table,
+    human,
+    { request: request.id, from: request.from, event: "answered", results: results.map(({ kept }) => kept) },
+    { items: [requestMoved(table, request, "running", "answered", { thread: [...request.thread, sent] }), systemMailRecord(table, sesIdOf(sent))] },
+  );
   if (answer?.erased === true) await eraseCooRequest(table, mailBucket, human.id, request.id);
 }
 
 /**
- * What Coo did in the turn that answered the request's, each action that changed something with how
- * it went, its browsing, its payments and its web searches, as its mail says it. What waits for the
- * human is followed up once it is decided.
+ * A line of what Coo did: as its mail says it, and as its activity keeps it, in fixed text with
+ * none of what a run, a page or the mail wrote, such as browsing's sentence, a web search's query,
+ * what a payment is for, a refusal's words, or a draft's subject and recipients (#178).
  */
-async function resultsOf(runner: CooMailRunner, human: Human, request: CooRequest, asked: string, answer: ConversationTurn): Promise<string[]> {
+interface ResultLine {
+  mailed: string;
+  kept: string;
+}
+
+const keptAsMailed = (line: string): ResultLine => ({ mailed: line, kept: line });
+
+/**
+ * What Coo did in the turn that answered the request's, each action that changed something with how
+ * it went, its browsing, its payments and its web searches. What waits for the human is followed up
+ * once it is decided.
+ */
+async function resultsOf(runner: CooMailRunner, human: Human, request: CooRequest, asked: string, answer: ConversationTurn): Promise<ResultLine[]> {
   const whose = request.from === human.email ? "your" : `${human.email}'s`;
-  const results: string[] = [];
+  const results: ResultLine[] = [];
   for (const action of answer.actions) {
-    // What only read changed nothing, so the mail leaves it out.
-    if (operations.find(({ operationId }) => operationId === action.operation)?.method === "get") continue;
-    const what = action.what.replace(/\.$/, "");
+    // What only read, or a tool Duva doesn't have, changed nothing, so the mail leaves it out.
+    const operation = operations.find(({ operationId }) => operationId === action.operation);
+    if (operation === undefined || operation.method === "get") continue;
+    const what = operation.summary.replace(/\.$/, "");
     if (!action.ok) {
-      results.push(`Not done: ${what}. ${action.message ?? ""}`.trim());
+      results.push({ mailed: `Not done: ${what}. ${action.message ?? ""}`.trim(), kept: `Not done: ${what}.` });
       continue;
     }
     const waits = sending.has(action.operation) && action.draft !== undefined ? await waitingSend(runner, human, action) : undefined;
-    if (waits === undefined) results.push(`Done: ${what}.`);
+    if (waits === undefined) results.push(keptAsMailed(`Done: ${what}.`));
     else {
       await awaitDecision(runner.table, waits, request);
-      results.push(waits.state === "waiting" ? `${what}: it waits for ${whose} approval. I'll write again once it's decided.` : `${what}: it goes out shortly. I'll write again once it's sent.`);
+      results.push(keptAsMailed(waits.state === "waiting" ? `${what}: it waits for ${whose} approval. I'll write again once it's decided.` : `${what}: it goes out shortly. I'll write again once it's sent.`));
     }
   }
-  for (const { site, said } of answer.browsed ?? []) results.push(`Browsed ${site}: ${said}`);
+  for (const { site, said } of answer.browsed ?? []) results.push({ mailed: `Browsed ${site}: ${said}`, kept: `Browsed ${site}.` });
   for (const payment of (await paymentsOfTurn(runner.table, human.id, asked)).toReversed()) {
-    const what = `${payment.amount} ${payment.currency} on ${payment.site} with ${payment.cardName}, for ${payment.for}`;
-    if (payment.state === "paid") results.push(`Paid ${what}.`);
+    const what = `${payment.amount} ${payment.currency} on ${payment.site} with ${payment.cardName}`;
+    // The mail also says what it pays for, as Coo put it.
+    const line = (saying: (paying: string) => string): ResultLine => ({ mailed: saying(`${what}, for ${payment.for}`), kept: saying(what) });
+    if (payment.state === "paid") results.push(line((paying) => `Paid ${paying}.`));
     else if (payment.state === "waiting") {
       await awaitDecision(runner.table, { mailbox: payment.mailbox, payment: payment.id }, request);
       const why = payment.newSite ? `the card doesn't pay on ${payment.site} yet${payment.aboveLimits ? ", and it's above its limits" : ""}` : "it's above the card's limits";
-      results.push(`Paying ${what}: ${why}, so it waits for ${whose} approval. I'll write again once it's decided.`);
+      results.push(line((paying) => `Paying ${paying}: ${why}, so it waits for ${whose} approval. I'll write again once it's decided.`));
     } else if (payment.state === "approved") {
       // Approved before this answer went, so what follows is how the run that goes back for it went.
       await awaitDecision(runner.table, { mailbox: payment.mailbox, payment: payment.id }, request);
-      results.push(`Paying ${what}: it was approved, and I'm going back to the page to pay it. I'll write again once I have.`);
+      results.push(line((paying) => `Paying ${paying}: it was approved, and I'm going back to the page to pay it. I'll write again once I have.`));
     }
   }
-  for (const { query } of answer.searches ?? []) results.push(`Searched the web for ${JSON.stringify(query)}.`);
+  for (const { query } of answer.searches ?? []) results.push({ mailed: `Searched the web for ${JSON.stringify(query)}.`, kept: "Searched the web." });
   return results;
 }
 
@@ -317,32 +339,36 @@ async function followUp(runner: CooMailRunner, followed: FollowUp): Promise<void
   if (request === undefined || human === undefined) return;
   const who = request.from === human.email ? "You" : human.email;
   const line = "draft" in followed ? await sendDecided(runner, followed.mailbox, followed.draft, followed.outcome, who) : await paymentDecided(runner, human, followed.payment, followed.outcome, who, followed.said);
-  const sent = await mail(runner, human, request, { text: line });
+  const sent = await mail(runner, human, request, { text: line.mailed });
   if (sent === undefined) return;
   await documents(table).send(new UpdateCommand({ TableName: table.name, Key: requestKey(human.id, request.id), UpdateExpression: "SET thread = list_append(thread, :sent)", ExpressionAttributeValues: { ":sent": [sent] } }));
   const about = "draft" in followed ? { draft: followed.draft } : { payment: followed.payment };
-  await noteMailToCoo(table, human, { request: request.id, from: request.from, event: "followedUp", ...about, outcome: followed.outcome, results: [line] }, { items: [systemMailRecord(table, sesIdOf(sent))] });
+  await noteMailToCoo(table, human, { request: request.id, from: request.from, event: "followedUp", ...about, outcome: followed.outcome, results: [line.kept] }, { items: [systemMailRecord(table, sesIdOf(sent))] });
 }
 
-/** How the draft's send was decided, as Coo's mail says it. */
-async function sendDecided({ table }: CooMailRunner, mailbox: string, draft: string, outcome: FollowUp["outcome"], who: string): Promise<string> {
+/** How the draft's send was decided, as Coo's mail says it, by its subject and recipients, and as its activity keeps it. */
+async function sendDecided({ table }: CooMailRunner, mailbox: string, draft: string, outcome: FollowUp["outcome"], who: string): Promise<ResultLine> {
   const found = await findDraft(table, mailbox, draft);
+  const decided = (mail: string) => {
+    const Mail = `${mail.charAt(0).toUpperCase()}${mail.slice(1)}`;
+    return outcome === "rejected" ? `${who} didn't approve ${mail}, so it wasn't sent.` : outcome === "failed" ? `${Mail} couldn't be sent.` : `${Mail} was sent.`;
+  };
   const named = found === undefined ? "the mail I wrote" : `the mail ${found.subject === "" ? "with no subject" : JSON.stringify(found.subject)} to ${found.to.map(({ address }) => address).join(", ") || "no one"}`;
-  const Named = `${named.charAt(0).toUpperCase()}${named.slice(1)}`;
-  return outcome === "rejected" ? `${who} didn't approve ${named}, so it wasn't sent.` : outcome === "failed" ? `${Named} couldn't be sent.` : `${Named} was sent.`;
+  return { mailed: decided(named), kept: decided("the mail I wrote") };
 }
 
 /**
- * How the payment was decided, as Coo's mail says it. An approved one is paid by a fresh run that
- * goes back to the page (#171), which is said once it paid, or couldn't, with what that run said.
+ * How the payment was decided, as Coo's mail says it, and as its activity keeps it. An approved one
+ * is paid by a fresh run that goes back to the page (#171), which is said once it paid, or couldn't,
+ * with what that run said in the mail.
  */
-async function paymentDecided({ table }: CooMailRunner, human: Human, id: string, outcome: FollowUp["outcome"], who: string, said?: string): Promise<string> {
+async function paymentDecided({ table }: CooMailRunner, human: Human, id: string, outcome: FollowUp["outcome"], who: string, said?: string): Promise<ResultLine> {
   const payment = await findPayment(table, human.id, id);
   const what = payment === undefined ? "the payment" : `${payment.amount} ${payment.currency} on ${payment.site}`;
-  if (outcome === "declined") return `${who} declined paying ${what}, so I didn't pay it.`;
-  if (outcome === "paid") return `I paid ${what}${payment === undefined ? "" : ` with ${payment.cardName}`}, as approved.`;
-  if (outcome === "unpaid") return `I went back to pay ${what}, as approved, but couldn't: ${said ?? "the run stopped"}`.replace(/([^.!?])$/, "$1.");
-  return `${who} approved paying ${what}. I'm going back to the page to pay it, and I'll write again once I have.`;
+  if (outcome === "declined") return keptAsMailed(`${who} declined paying ${what}, so I didn't pay it.`);
+  if (outcome === "paid") return keptAsMailed(`I paid ${what}${payment === undefined ? "" : ` with ${payment.cardName}`}, as approved.`);
+  if (outcome === "unpaid") return { mailed: `I went back to pay ${what}, as approved, but couldn't: ${said ?? "the run stopped"}`.replace(/([^.!?])$/, "$1."), kept: `I went back to pay ${what}, as approved, but couldn't.` };
+  return keptAsMailed(`${who} approved paying ${what}. I'm going back to the page to pay it, and I'll write again once I have.`);
 }
 
 /**
