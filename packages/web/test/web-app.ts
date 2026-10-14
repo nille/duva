@@ -220,7 +220,8 @@ async function serve(root: string, harness: { url: string; signIn: { clientId: s
 /**
  * The mailboxes a human reads, their own: on a desk as the selector at the side column's head opens
  * them, opening it if it is shown and closed. On a phone they are in the switcher's sheet, which a
- * test opens.
+ * test opens. A click on a mailbox in either closes them a moment later, as the mailbox opens, so a
+ * test waits for the mailbox to open before it asks for them again, or the link it asks for can be gone.
  */
 export async function mailboxes(page: Page) {
   const selector = page.getByRole("button", { name: /Choose a mailbox$/ });

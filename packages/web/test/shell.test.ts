@@ -41,6 +41,8 @@ async function withTwoMailboxes(options: Parameters<typeof startWebApp>[0] = {})
 
 const views = (page: Page) => page.getByRole("navigation", { name: "Mail" });
 const title = (page: Page) => page.getByRole("heading", { level: 1 }).textContent();
+/** What the selector at the side column's head names, which is the mailbox open once it has opened. */
+const selectorName = (page: Page) => page.getByRole("button", { name: /Choose a mailbox$/ }).getAttribute("aria-label");
 const fits = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 
 test("a human's own mailboxes are each listed by their address with their unread counts under All mailboxes, and each opens as theirs", budget, async () => {
@@ -77,7 +79,9 @@ test("a human writes from their second mailbox, and the draft lies in its Drafts
   const { page, signIn, ada, lovelace } = await withTwoMailboxes();
   await signIn("ada@example.org");
   await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).click();
-  await expect.poll(() => page.url(), wait).toContain(`#/mailboxes/${lovelace}/`);
+  // The address changes at the click, and the mailbox opens a moment later, so Write waits for it to.
+  await expect.poll(() => selectorName(page), wait).toMatch(/^lovelace@example\.com, /);
+  expect(page.url()).toContain(`#/mailboxes/${lovelace}/`);
 
   await page.getByRole("button", { name: "Write" }).click();
 
@@ -100,6 +104,7 @@ test("a human writes from their second mailbox, and the draft lies in its Drafts
   expect(await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).getAttribute("aria-current")).toBe("page");
 
   await (await mailboxes(page)).getByRole("link", { name: /^ada@/ }).click();
+  await expect.poll(() => selectorName(page), wait).toMatch(/^ada@example\.com, /);
   await views(page).getByRole("link", { name: "Drafts" }).click();
   await expect.poll(() => page.getByText("No drafts").count(), wait).toBe(1);
 });
@@ -150,7 +155,7 @@ test("going back to a thread opened in All mailboxes opens it there, after the h
   await expect.poll(() => title(page), wait).toBe("Till Ada");
 
   await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).click();
-  await expect.poll(async () => (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).getAttribute("aria-current"), wait).toBe("page");
+  await expect.poll(() => selectorName(page), wait).toMatch(/^lovelace@example\.com, /);
   await page.goBack();
 
   await expect.poll(() => title(page), wait).toBe("Till Ada");
@@ -267,7 +272,7 @@ test("on a phone one switcher names the view and the mailbox, and opens the mail
 
   await switcher.click();
   await (await mailboxes(page)).getByRole("link", { name: /^lovelace@/ }).click();
-  await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Inbox, lovelace@example.com, Mailboxes and views");
+  await expect.poll(() => switcher.getAttribute("aria-label"), wait).toBe("Inbox, lovelace@example.com, 1 unread, Mailboxes and views");
   await page.getByRole("link", { name: /Till Lovelace/ }).click();
 
   // While a thread is read the switcher steps aside, and the back link names the view.
