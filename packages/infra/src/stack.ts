@@ -70,7 +70,7 @@ import { operations } from "@duva/openapi";
 import { cliRedirectUri, stackOutputs, stackParameters } from "./outputs.ts";
 import { searchCode } from "./search-code.ts";
 import { agentCode, agentEntryPoint } from "./agent-code.ts";
-import { deciderModel, type MailboxAgentModel, mailboxAgentModels, type SuggestionModel, suggestionModels } from "@duva/api/agent-models";
+import { deciderModel, type MailboxAgentModel, type MailboxAgentProfile, mailboxAgentModels, type Offered, type SuggestionModel, suggestionModels } from "@duva/api/agent-models";
 
 /** The regions where SES receives mail but AgentCore Runtime doesn't run (docs/research/agentcore.md). */
 export const regionsWithoutAgentCore = ["af-south-1", "ap-northeast-3", "ap-southeast-3", "il-central-1", "me-south-1"];
@@ -506,6 +506,26 @@ function handler(event) {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
     });
+    // Duva calls a model where it runs nearest the deployment (`callOf`): without a profile in a
+    // region that runs it so, or through one of its profiles, which may send it on to that profile's
+    // regions (docs/aws.md). Which depends on the region, so a role may invoke each model through the
+    // profiles it has, in any region, and the model itself in the regions where it runs without one,
+    // and anywhere else only through one of those profiles.
+    const invoking = (actions: string[], models: ({ model: string } & Offered<string>)[]) => {
+      const profiles = models.flatMap(({ model, profiles: theirs }) =>
+        theirs.filter((profile) => profile !== "none").map((profile) => this.formatArn({ service: "bedrock", region: "*", resource: "inference-profile", resourceName: `${profile}.${model}` })),
+      );
+      const inRegion = models.flatMap(({ model, inRegion: regions }) => regions.map((region) => `arn:aws:bedrock:${region}::foundation-model/${model}`));
+      const profiled = models.filter(({ profiles: theirs }) => theirs.some((profile) => profile !== "none"));
+      return [
+        new PolicyStatement({ actions, resources: [...profiles, ...inRegion] }),
+        new PolicyStatement({
+          actions,
+          resources: profiled.flatMap(({ model }) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`]),
+          conditions: { StringLike: { "bedrock:InferenceProfileArn": profiles } },
+        }),
+      ];
+    };
     const searchIndexes = `s3://${search.bucketName}/${searchIndexesPrefix}`;
     const lanceCode = Code.fromAsset(searchCode());
     const lanceLambda = (id: string, handler: string, environment: Record<string, string>, { memorySize, timeout }: { memorySize: number; timeout: Duration }) =>
@@ -528,8 +548,9 @@ function handler(event) {
     // and the API Coo's memories (ADR-0036).
     const embedding = new PolicyStatement({ actions: ["bedrock:InvokeModel"], resources: [this.formatArn({ service: "bedrock", account: "", resource: "foundation-model", resourceName: embeddingModel })] });
     searcher.addToRolePolicy(embedding);
-    // Search also translates its words with Nova Lite there, into the organization's search languages (#67).
-    searcher.addToRolePolicy(new PolicyStatement({ actions: ["bedrock:InvokeModel"], resources: [this.formatArn({ service: "bedrock", account: "", resource: "foundation-model", resourceName: translationModel })] }));
+    // Search also translates its words with Nova Lite, into the organization's search languages,
+    // where it runs nearest the deployment (#67, #181).
+    for (const statement of invoking(["bedrock:InvokeModel"], [{ model: translationModel, ...mailboxAgentModels[translationModel] }])) searcher.addToRolePolicy(statement);
 
     // The indexer reads a FIFO queue with each mailbox as a message group, so each mailbox's index
     // has one writer at a time (#18). A task that keeps failing goes to a queue of its own, and the
@@ -942,53 +963,15 @@ function handler(event) {
       },
     };
     for (const construct of [agentRuntime, browser, ...searching]) Aspects.of(construct).add(conditioned);
-    // The agents call their model in the model region the organization chose, through its eu, us or
-    // global inference profile, which may send it on to that profile's regions (docs/aws.md). So
-    // the role may invoke the models admins can choose through the profiles each has in any region,
-    // and the models themselves only through one of them, or in the regions where they run without one.
-    // The decider, Nova Micro, goes through the eu or us profile (#132).
-    const models: (MailboxAgentModel | typeof deciderModel)[] = [...(Object.keys(mailboxAgentModels) as MailboxAgentModel[]), deciderModel];
-    const profiles = models.flatMap((model) =>
-      (model === deciderModel ? ["eu", "us"] : mailboxAgentModels[model].profiles.filter((profile) => profile !== "none")).map((profile) =>
-        this.formatArn({ service: "bedrock", region: "*", resource: "inference-profile", resourceName: `${profile}.${model}` }),
-      ),
-    );
-    const inRegion = models.flatMap((model) => (model === deciderModel ? [] : mailboxAgentModels[model].inRegion).map((region) => `arn:aws:bedrock:${region}::foundation-model/${model}`));
-    agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"], resources: [...profiles, ...inRegion] }));
-    agentRuntime.addToRolePolicy(
-      new PolicyStatement({
-        actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
-        resources: models.flatMap((model) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`]),
-        conditions: { StringLike: { "bedrock:InferenceProfileArn": profiles } },
-      }),
-    );
+    // The agents call each model admins can choose as `callOf` says, and the decider, Nova Micro,
+    // through its eu or us profile (#132).
+    const thinking = [...(Object.keys(mailboxAgentModels) as MailboxAgentModel[]).map((model) => ({ model, ...mailboxAgentModels[model] })), { model: deciderModel, profiles: ["eu", "us"] as MailboxAgentProfile[], inRegion: [] }];
+    for (const statement of invoking(["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"], thinking)) agentRuntime.addToRolePolicy(statement);
 
-    // Suggestions and style notes call their model from the API and the sender (#156): gpt-oss-20b
-    // and Qwen3 32B on demand, in the deployment's region or, outside the EU and the US, eu-central-1,
-    // and Nova Micro and Claude Haiku 4.5 through their eu or us profile, which may send them on to
-    // that profile's regions (docs/aws.md).
-    const suggesting = (Object.keys(suggestionModels) as SuggestionModel[]).map((model) => ({ model, profiled: suggestionModels[model].profiled }));
-    const suggestionProfiles = suggesting
-      .filter(({ profiled }) => profiled)
-      .flatMap(({ model }) => ["eu", "us"].map((profile) => this.formatArn({ service: "bedrock", region: "*", resource: "inference-profile", resourceName: `${profile}.${model}` })));
-    for (const writer of [handler, sender]) {
-      writer.addToRolePolicy(
-        new PolicyStatement({
-          actions: ["bedrock:InvokeModel"],
-          resources: [
-            ...suggesting.filter(({ profiled }) => !profiled).map(({ model }) => `arn:aws:bedrock:*::foundation-model/${model}`),
-            ...suggestionProfiles,
-          ],
-        }),
-      );
-      writer.addToRolePolicy(
-        new PolicyStatement({
-          actions: ["bedrock:InvokeModel"],
-          resources: suggesting.filter(({ profiled }) => profiled).map(({ model }) => `arn:aws:bedrock:*::foundation-model/${model}`),
-          conditions: { StringLike: { "bedrock:InferenceProfileArn": suggestionProfiles } },
-        }),
-      );
-    }
+    // Suggestions and style notes call their model from the API and the sender (#156), as
+    // `suggestionCall` says (#181).
+    const suggesting = (Object.keys(suggestionModels) as SuggestionModel[]).map((model) => ({ model, ...suggestionModels[model] }));
+    for (const writer of [handler, sender]) for (const statement of invoking(["bedrock:InvokeModel"], suggesting)) writer.addToRolePolicy(statement);
     // The sender embeds each style note it writes, as memories are, with Titan in the deployment's region.
     sender.addToRolePolicy(embedding);
 

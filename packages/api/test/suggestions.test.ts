@@ -186,6 +186,62 @@ test("a human switches suggestions off for themselves, and an admin for the orga
   expect(unknown.response.status).toBe(400);
 });
 
+/** The model ID and region each suggestion model is asked with, in a deployment in the region. */
+async function askedIn(region: string) {
+  const { suggester, requests } = scripted(() => "See you on Friday.");
+  const { ada, suggest } = await withLinus({ suggester, region });
+  for (const suggestionModel of ["qwen.qwen3-32b-v1:0", "openai.gpt-oss-20b-1:0", "amazon.nova-micro-v1:0", "anthropic.claude-haiku-4-5-20251001-v1:0"] as const) {
+    await ada.PATCH("/organization/settings", { body: { suggestionModel } });
+    await suggest({ text: "See you" });
+  }
+  return requests.map(({ modelId, region: from }) => [modelId, from]);
+}
+
+// Where Bedrock offers each, by ListFoundationModels and Converse in each region (docs/aws.md, #181).
+test("a deployment in the EU asks each suggestion model in its own region where the model runs there, and otherwise from eu-central-1, there or through the eu profile", async () => {
+  const [north, paris, london] = await Promise.all(["eu-north-1", "eu-west-3", "eu-west-2"].map(askedIn));
+
+  expect(north).toEqual([
+    ["qwen.qwen3-32b-v1:0", "eu-north-1"],
+    ["openai.gpt-oss-20b-1:0", "eu-north-1"],
+    ["eu.amazon.nova-micro-v1:0", "eu-central-1"],
+    ["eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu-central-1"],
+  ]);
+  // Neither Qwen3 32B nor gpt-oss-20b runs in eu-west-3, and Nova Micro runs there only through eu.
+  expect(paris).toEqual([
+    ["qwen.qwen3-32b-v1:0", "eu-central-1"],
+    ["openai.gpt-oss-20b-1:0", "eu-central-1"],
+    ["eu.amazon.nova-micro-v1:0", "eu-central-1"],
+    ["eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu-central-1"],
+  ]);
+  // Nova Micro runs on demand in eu-west-2, which its eu profile leaves out.
+  expect(london).toEqual([
+    ["qwen.qwen3-32b-v1:0", "eu-west-2"],
+    ["openai.gpt-oss-20b-1:0", "eu-west-2"],
+    ["amazon.nova-micro-v1:0", "eu-west-2"],
+    ["eu.anthropic.claude-haiku-4-5-20251001-v1:0", "eu-central-1"],
+  ]);
+});
+
+test("a deployment in the US asks each suggestion model in its own region or from us-west-2, and one elsewhere in its own region where the model runs there", async () => {
+  const [california, tokyo] = await Promise.all(["us-west-1", "ap-northeast-1"].map(askedIn));
+
+  // Neither Qwen3 32B nor gpt-oss-20b runs in us-west-1, nor Nova Micro's us profile.
+  expect(california).toEqual([
+    ["qwen.qwen3-32b-v1:0", "us-west-2"],
+    ["openai.gpt-oss-20b-1:0", "us-west-2"],
+    ["us.amazon.nova-micro-v1:0", "us-west-2"],
+    ["us.anthropic.claude-haiku-4-5-20251001-v1:0", "us-west-2"],
+  ]);
+  // Outside the EU and the US, a model is called as Coo's are: Nova Micro through us, and Claude through global.
+  expect(tokyo).toEqual([
+    ["qwen.qwen3-32b-v1:0", "ap-northeast-1"],
+    ["openai.gpt-oss-20b-1:0", "ap-northeast-1"],
+    ["us.amazon.nova-micro-v1:0", "us-west-2"],
+    ["global.anthropic.claude-haiku-4-5-20251001-v1:0", "eu-central-1"],
+  ]);
+});
+
 const sends = Array.from({ length: 10 }, (_, at) => ({ to: `friend${at}@example.org`, subject: `Plans ${at + 1}`, text: `Hej!\n\nSes vi på lördag? Plan ${at + 1}.\n\nHa det fint, Linus` }));
 
 test("after every tenth message a human sends, the style note is written from those ten and names their threads", async () => {
@@ -212,6 +268,16 @@ test("after every tenth message a human sends, the style note is written from th
     },
   ]);
   expect(requests.at(-1)!.prompt).toContain('How the writer writes:\nWriting style: In Swedish he greets with "Hej!"');
+});
+
+test("the style note asks the suggestion model where suggestions ask it, as from eu-central-1 for a deployment in eu-west-3", async () => {
+  const { suggester, requests } = scripted(({ system }) => (system.includes("describe how they write") ? "Short and friendly." : ""));
+  const { send, memories } = await withLinus({ suggester, region: "eu-west-3" });
+
+  for (const { to, subject, text } of sends) await send(to, subject, text);
+
+  expect((await memories()).map(({ text }) => text)).toEqual(["Writing style: Short and friendly."]);
+  expect(requests.map(({ model, modelId, region }) => [model, modelId, region])).toEqual([["qwen.qwen3-32b-v1:0", "qwen.qwen3-32b-v1:0", "eu-central-1"]]);
 });
 
 test("the next ten sends replace the style note, and erasing one of its threads erases it", async () => {

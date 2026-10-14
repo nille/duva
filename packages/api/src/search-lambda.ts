@@ -18,6 +18,6 @@ export const handler = createSearcher(
     storageOptions: { region: required("AWS_REGION") },
     session: new Session(memory / 4n, memory / 16n),
     embedder: titanEmbedder(),
-    translator: novaTranslator(),
+    translator: novaTranslator({ region: required("AWS_REGION") }),
   }),
 );

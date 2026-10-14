@@ -509,6 +509,23 @@ test("a deployment in the US calls each measured model in the US, through us-wes
   ]);
 });
 
+test("Nova Lite, which also translates searches, is called on demand in a deployment's region where it runs so, and otherwise through the continent's profile, as in eu-west-3, where it runs only through eu", async () => {
+  const novaLiteIn = async (region: string) => {
+    const { linus } = await withMailbox({ region });
+    const { data } = await linus.GET("/organization/mailbox-agent-models");
+    const { profileId, region: from, processedIn } = data!.models.find(({ model }) => model === novaLite)!;
+    return [profileId, from, processedIn];
+  };
+
+  const [paris, london, california, tokyo] = await Promise.all(["eu-west-3", "eu-west-2", "us-west-1", "ap-northeast-1"].map(novaLiteIn));
+
+  // ListFoundationModels and Converse in each region (docs/aws.md, #181).
+  expect(paris).toEqual([`eu.${novaLite}`, "eu-central-1", "continent"]);
+  expect(london).toEqual([novaLite, "eu-west-2", "region"]);
+  expect(california).toEqual([`us.${novaLite}`, "us-west-2", "continent"]);
+  expect(tokyo).toEqual([novaLite, "ap-northeast-1", "region"]);
+});
+
 test("each human picks their Coo's everyday and harder models from those admins allow, or keeps the organization's defaults", async () => {
   const { model, requests } = scripted(
     () => [use("listLabels")],

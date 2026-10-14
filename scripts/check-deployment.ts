@@ -16,11 +16,11 @@
 // suppression list, which only warns; and no received mail and no approved send waits in a failure queue; Duva's configuration set publishes only bounces,
 // complaints and rejects, to a topic that only it may invoke the feedback Lambda for, and no event
 // of SES's waits in the feedback Lambda's failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
-// on x64, and Nova Lite translates in the region; every mailbox's search index is backfilled, naming any whose backfill is stuck, none has held
+// on x64, and Nova Lite translates where search calls it; every mailbox's search index is backfilled, naming any whose backfill is stuck, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
 // may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
 // turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, their unsubscribe browser is ready on the public network and records nothing, the inbound Lambda is given the task runner, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
-// human's mailbox has its mailbox agent, no agent owns a mailbox, a first admin signing in on the organization's domains has a mailbox there, the humans' secrets are sealed with the stack's own rotating key the mailbox agents' role can't use, and Claude answers from eu-central-1 through the eu profile;
+// human's mailbox has its mailbox agent, no agent owns a mailbox, a first admin signing in on the organization's domains has a mailbox there, the humans' secrets are sealed with the stack's own rotating key the mailbox agents' role can't use, Claude answers from eu-central-1 through the eu profile, and each suggestion model answers where Duva calls it;
 // the stack, what Resource Groups Tagging finds of it, the humans' browser profiles, the domains' identities, the runtime's log group and the gateway to Web Search carry project=duva; and with
 // DUVA_TEST_HUMAN_CODES_KEY, All mailboxes answers for the test human's agent as its mailboxes do. Signing in stays
 // with a human. Then prints how many
@@ -52,7 +52,7 @@ import { GetBucketCorsCommand, GetBucketLifecycleConfigurationCommand, GetBucket
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
 import { alertMailFilter, authorizationServerPath, browserProfileTagged, projectTag, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
-import { callOf, defaultHarderModel, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
+import { callOf, defaultHarderModel, defaultMailboxAgentModel, inferenceProfileId, type SuggestionModel, suggestionCall, suggestionModels } from "@duva/api/agent-models";
 import { webSearchRegion } from "@duva/api/web-search";
 import { bedrockSuggester } from "@duva/api/suggestions";
 import { allDomains, earlierModelSettingsLeft, earlierModelsKept, firstAdminAddressMissing, organizationSettings } from "@duva/api/organization";
@@ -74,7 +74,7 @@ import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-r
 import { createHash } from "node:crypto";
 import { sesSuppressionList } from "@duva/api/suppression";
 import { novaTranslator } from "@duva/api/translation";
-import { deploymentTagged, stackName, stackOutputs, stackParameters, webHostsIn } from "@duva/infra/outputs";
+import { deploymentTagged, runtimeLogGroup, stackName, stackOutputs, stackParameters, webHostsIn } from "@duva/infra/outputs";
 import { managedLoginReached } from "@duva/api/mcp-sign-in";
 
 const region = process.env.AWS_REGION;
@@ -462,12 +462,14 @@ await check("each model admins allow answers where Duva calls it for this deploy
   }
   return silent.length === 0 ? undefined : `${silent.join(", ")} didn't answer yes`;
 });
-await check("the organization's suggestion model answers where Duva calls it for this deployment's region (#156)", async () => {
-  const table = await stackTable();
-  if (table === undefined) return "the stack has no table";
-  const { settings } = await organizationSettings(table);
-  const answer = await bedrockSuggester({ region: region! })({ model: settings.suggestionModel, system: "Answer with the word yes.", prompt: "Answer with the word yes.", maxTokens: 200, seconds: 30 });
-  return /yes/i.test(answer.text) ? undefined : `${settings.suggestionModel} answered ${JSON.stringify(answer.text)}`;
+await check("each suggestion model admins can choose answers where Duva calls it for this deployment's region (#156, #181)", async () => {
+  const silent: string[] = [];
+  for (const model of Object.keys(suggestionModels) as SuggestionModel[]) {
+    const call = suggestionCall(model, region!);
+    const answer = await bedrockSuggester()({ model, ...call, system: "Answer with the word yes.", prompt: "Answer with the word yes.", maxTokens: 200, seconds: 30 }).catch((error: Error) => ({ text: error.message }));
+    if (!/yes/i.test(answer.text)) silent.push(`${call.modelId} in ${call.region} answered ${JSON.stringify(answer.text)}`);
+  }
+  return silent.length === 0 ? undefined : silent.join(", ");
 });
 await check("asking for a suggestion without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/mailboxes/none/suggestions`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"text":"Hi"}' }), 401),
@@ -624,9 +626,8 @@ await check("search runs at 10,240 MB on x64, as ADR-0007 measured", async () =>
   return MemorySize === 10_240 && JSON.stringify(Architectures) === '["x86_64"]' ? undefined : `runs at ${MemorySize} MB on ${Architectures}`;
 });
 await check("searching without credentials answers 401", async () => expectStatus(await fetch(`${apiUrl}/mailboxes/x/search?q=x`), 401));
-await check("Nova Lite translates a search's words in the deployment's region, as search does (#67)", async () => {
-  // The translator's client is in AWS_REGION, the deployment's.
-  const translated = await novaTranslator().translate("kvitto", "English");
+await check("Nova Lite translates a search's words where search calls it for this deployment's region (#67, #181)", async () => {
+  const translated = await novaTranslator({ region: region! }).translate("kvitto", "English");
   return translated?.toLowerCase().includes("receipt") ? undefined : `translated "kvitto" into English as ${JSON.stringify(translated)}`;
 });
 await check("every mailbox's search index is backfilled", async () => {
@@ -994,7 +995,7 @@ await check("the stack, each of its resources Resource Groups Tagging finds, eac
   }
   // AgentCore makes the runtime's log group, and deploy tags it.
   if (agentRuntime !== "") {
-    const resourceArn = `arn:${partition}:logs:${region}:${account}:log-group:/aws/bedrock-agentcore/runtimes/${agentRuntime.split("/").at(-1)}-DEFAULT`;
+    const resourceArn = `arn:${partition}:logs:${region}:${account}:log-group:${runtimeLogGroup(agentRuntime.split("/").at(-1)!)}`;
     if (!projectTagged((await new CloudWatchLogsClient({ region }).send(new ListLogTagsCommand({ resourceArn }))).tags)) untagged.add(resourceArn);
   }
   return untagged.size === 0 ? undefined : `lack it: ${[...untagged].join(", ")}`;

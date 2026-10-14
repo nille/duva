@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { CreateRoleCommand, DeleteRoleCommand, DeleteRolePolicyCommand, IAMClient, PutRolePolicyCommand } from "@aws-sdk/client-iam";
 import { CreateFunctionCommand, DeleteFunctionCommand, InvokeCommand, LambdaClient, waitUntilFunctionActiveV2 } from "@aws-sdk/client-lambda";
 import { zipSync } from "fflate";
-import { type SuggestionModel, suggestionCost, suggestionModels } from "@duva/api/agent-models";
+import { type SuggestionModel, suggestionCall, suggestionCost, suggestionModels } from "@duva/api/agent-models";
 import { projectTag } from "@duva/api/infrastructure";
 import { restOf, suggestionPrompt, suggestionTokens } from "@duva/api/suggestions";
 
@@ -126,7 +126,7 @@ try {
   measured.titan = embeddings.map(({ ms }) => ms);
 
   for (const model of models) {
-    const { modelId, region: from } = suggestionModels[model].call(region);
+    const { modelId, region: from } = suggestionCall(model, region);
     const call = ({ system, prompt }: { system: string; prompt: string }) => ({
       region: from,
       modelId,
@@ -184,7 +184,7 @@ const summary = models.map((model) => {
     if (sameStart && first.every((word, at) => said[at] === word)) begins++;
   }
   const ok = results.filter(({ error }) => error === undefined);
-  const cost = ok.reduce((sum, result) => sum + suggestionCost({ inputTokens: result.inputTokens!, outputTokens: result.outputTokens! }, model), 0) / ok.length;
+  const cost = ok.reduce((sum, result) => sum + suggestionCost({ inputTokens: result.inputTokens!, outputTokens: result.outputTokens! }, model, region), 0) / ok.length;
   return {
     model,
     name: suggestionModels[model].name,

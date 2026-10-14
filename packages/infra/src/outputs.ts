@@ -1,5 +1,5 @@
-// The names deploy and the Duva stack share. Kept apart from the CDK app, so the CLI can import
-// them without aws-cdk-lib.
+// The names deploy, the scripts that check and destroy a deployment, and the Duva stack share.
+// Kept apart from the CDK app, so the CLI can import them without aws-cdk-lib.
 
 /** The Duva stack's name. */
 export const stackName = "Duva";
@@ -47,6 +47,20 @@ export const stackOutputs = {
   dkimName: (n: 1 | 2 | 3) => `DkimName${n}`,
   dkimValue: (n: 1 | 2 | 3) => `DkimValue${n}`,
 } as const;
+
+/** The log group AgentCore makes for the runtime's DEFAULT endpoint, by the runtime's ID (docs/aws.md). */
+export const runtimeLogGroup = (agentRuntimeId: string) => `/aws/bedrock-agentcore/runtimes/${agentRuntimeId}-DEFAULT`;
+
+/**
+ * The log groups a deletion of the stack may leave, from its resources as CloudFormation lists them:
+ * each of the stack's own, which a Lambda invoked as the stack is deleted can make again once
+ * CloudFormation deleted it, as the gateway's custom resource did, and the runtime's, which AgentCore
+ * makes and CloudFormation never deletes (docs/aws.md, #181).
+ */
+export const logGroupsLeft = (resources: { ResourceType?: string; PhysicalResourceId?: string }[]) =>
+  resources.flatMap(({ ResourceType, PhysicalResourceId: id }) =>
+    id === undefined ? [] : ResourceType === "AWS::Logs::LogGroup" ? [id] : ResourceType === "AWS::BedrockAgentCore::Runtime" ? [runtimeLogGroup(id)] : [],
+  );
 
 /** The tag that names the region of the deployment a certificate in us-east-1 serves, as one account may have a deployment in each region. */
 export const deploymentTag = "duva-deployment";

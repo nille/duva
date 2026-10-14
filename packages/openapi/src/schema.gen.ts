@@ -5844,7 +5844,7 @@ export interface components {
             suggestion?: string;
         };
         /**
-         * @description A model on Amazon Bedrock that suggests the rest of a sentence, by its Bedrock model ID, each measured for it (docs/research/suggestions.md): gpt-oss-20b, and Qwen3 32B, the default, on demand in the deployment's region, Amazon Nova Micro through the continent's profile, and Claude Haiku 4.5, the best and slowest, through it from eu-central-1 in the EU.
+         * @description A model on Amazon Bedrock that suggests the rest of a sentence, by its Bedrock model ID, each measured for it (docs/research/suggestions.md): gpt-oss-20b, Qwen3 32B, the default, Amazon Nova Micro, and Claude Haiku 4.5, the best and slowest. Duva calls each as it calls Coo's models: in the deployment's region where the model runs there on demand, and otherwise from eu-central-1 in the EU and us-west-2 in the US, on demand or through the continent's profile.
          * @enum {string}
          */
         SuggestionModel: "openai.gpt-oss-20b-1:0" | "qwen.qwen3-32b-v1:0" | "amazon.nova-micro-v1:0" | "anthropic.claude-haiku-4-5-20251001-v1:0";
@@ -5871,7 +5871,7 @@ export interface components {
          * @description The AWS region Duva calls Bedrock in for a model, which its profile sends on from.
          * @enum {string}
          */
-        MailboxAgentRegion: "eu-central-1" | "eu-west-1" | "eu-west-3" | "eu-north-1" | "us-east-1" | "us-east-2" | "us-west-2";
+        MailboxAgentRegion: "eu-central-1" | "eu-west-1" | "eu-west-2" | "eu-west-3" | "eu-north-1" | "us-east-1" | "us-east-2" | "us-west-2" | "ap-northeast-1" | "ap-southeast-2";
         /**
          * @description Where Bedrock processes what a model reads of the mail: region, in the deployment's own AWS region; continent, in the AWS regions of its continent, such as the EU's; us, in the US's; anywhere, in any region with capacity. Duva calls each model as close as it runs: in the deployment's region, through its continent's profile, through the global profile, or for a model available only in the US, through the us profile.
          * @enum {string}

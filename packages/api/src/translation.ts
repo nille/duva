@@ -1,8 +1,11 @@
 // Amazon Nova Lite translates a search's words into each of the organization's search languages
-// (#67), in the deployment's own region, so the words stay there. Titan places a Swedish word and
-// its English match about as far apart as unrelated mail, so a search also looks for its words in
-// the other languages. A translation that fails or takes too long leaves the search without it.
+// (#67), called as Coo calls it (`callOf`): in the deployment's own region where it runs there on
+// demand, so the words stay there (ADR-0007), and where it doesn't, as in eu-west-3, through the
+// continent's profile, so they stay on the continent, where before the search went untranslated (#181). Titan places a Swedish word and its English match about as
+// far apart as unrelated mail, so a search also looks for its words in the other languages. A
+// translation that fails or takes too long leaves the search without it.
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
+import { callOf, inferenceProfileId } from "./agent-models.ts";
 import { translationModel } from "./infrastructure.ts";
 import type { Language } from "./languages.ts";
 
@@ -24,12 +27,15 @@ const longestWords = 200;
 /** Nova Lite answers in about 0.3 s at p50 and 0.4 s at p95 (docs/aws.md), so a search waits at most this long for it. */
 const translationTimeout = 1_500;
 
-export function novaTranslator(client = new BedrockRuntimeClient({ maxAttempts: 1 })): Translator {
+/** Nova Lite, as a deployment in the region calls it. */
+export function novaTranslator({ region: deployed }: { region: string }): Translator {
+  const { profile, region } = callOf(translationModel, deployed);
+  const client = new BedrockRuntimeClient({ region, maxAttempts: 1 });
   return {
     async translate(words, into) {
       const { output } = await client.send(
         new ConverseCommand({
-          modelId: translationModel,
+          modelId: inferenceProfileId(translationModel, profile),
           system: [{ text: instructions(into) }],
           messages: [{ role: "user", content: [{ text: words.slice(0, longestWords) }] }],
           inferenceConfig: { maxTokens: 60, temperature: 0 },

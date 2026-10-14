@@ -10,7 +10,7 @@ import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-r
 import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import { addSpend, capRefusal, monthOf, spentIn } from "./agent-runs.ts";
-import { type SuggestionModel, suggestionCost, suggestionModels } from "./agent-models.ts";
+import { type SuggestionModel, suggestionCall, suggestionCost } from "./agent-models.ts";
 import { jsonBody, type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
 import type { MailBucket } from "./mail-bucket.ts";
@@ -21,19 +21,22 @@ import { learnsFromMail, suggestionsOn } from "./preferences.ts";
 import { documents, pk, sk } from "./table.ts";
 import type { Embedder } from "./titan.ts";
 
-/** One small model call: what it is told and asked, and what it answered, with its tokens. */
-export type Suggester = (request: { model: SuggestionModel; system: string; prompt: string; maxTokens: number; seconds: number }) => Promise<{ text: string; inputTokens: number; outputTokens: number }>;
+/**
+ * One small model call: the model, by the ID Converse takes for it and the region it is called in, as
+ * the deployment calls it (`suggestionCall`), what it is told and asked, and what it answered, with
+ * its tokens.
+ */
+export type Suggester = (request: { model: SuggestionModel; modelId: string; region: string; system: string; prompt: string; maxTokens: number; seconds: number }) => Promise<{ text: string; inputTokens: number; outputTokens: number }>;
 
 const clients = new Map<string, BedrockRuntimeClient>();
 
 /**
- * The suggestion models on Bedrock, each called with Converse as the deployment in the region calls
- * it, at temperature 0, gpt-oss with little reasoning, which it otherwise spends its tokens on. The
- * SDK makes one attempt, since a suggestion late is one not wanted, and gives up after `seconds`.
+ * The suggestion models on Bedrock, each called with Converse in the region asked, at temperature 0,
+ * gpt-oss with little reasoning, which it otherwise spends its tokens on. The SDK makes one attempt,
+ * since a suggestion late is one not wanted, and gives up after `seconds`.
  */
-export function bedrockSuggester({ region: deployed }: { region: string }): Suggester {
-  return async ({ model, system, prompt, maxTokens, seconds }) => {
-    const { modelId, region } = suggestionModels[model].call(deployed);
+export function bedrockSuggester(): Suggester {
+  return async ({ model, modelId, region, system, prompt, maxTokens, seconds }) => {
     const client = clients.get(region) ?? new BedrockRuntimeClient({ region, maxAttempts: 1 });
     clients.set(region, client);
     const { output, usage } = await client.send(
@@ -153,7 +156,7 @@ const askedKey = (human: string) => ({ [pk]: actorKey(human)[pk]!, [sk]: "sugges
 
 const addressesIn = (value: unknown) => (Array.isArray(value) && value.length <= 50 && value.every((address) => typeof address === "string") ? (value as string[]) : undefined);
 
-export const suggest: OperationHandler = async (event, { table, mailBucket, embedder, suggester }, actor) => {
+export const suggest: OperationHandler = async (event, { region, table, mailBucket, embedder, suggester }, actor) => {
   if (actor?.kind !== "human") return refusal(403, "Only humans get suggestions, as they write in their own mailboxes.");
   const mailbox = event.pathParameters?.mailbox ?? "";
   const body = jsonBody(event) ?? {};
@@ -199,9 +202,9 @@ export const suggest: OperationHandler = async (event, { table, mailBucket, embe
   const superseded = async () => (await documents(table).send(new GetCommand({ TableName: table.name, Key: askedKey(actor.id), ConsistentRead: true }))).Item?.asked !== asked;
   if (prompt === undefined || (await superseded())) return { statusCode: 200, body: {} satisfies components["schemas"]["Suggestion"] };
   const model = settings.suggestionModel;
-  const answer = await suggester({ model, system: prompt.system, prompt: prompt.prompt, maxTokens: suggestionTokens, seconds: 5 }).catch((error: unknown) => void console.error(error));
+  const answer = await suggester({ model, ...suggestionCall(model, region), system: prompt.system, prompt: prompt.prompt, maxTokens: suggestionTokens, seconds: 5 }).catch((error: unknown) => void console.error(error));
   if (answer === undefined) return { statusCode: 200, body: {} satisfies components["schemas"]["Suggestion"] };
-  await addSpend(table, month, suggestionCost(answer, model));
+  await addSpend(table, month, suggestionCost(answer, model, region));
   const rest = (await superseded()) ? undefined : restOf(answer.text, prompt.begun);
   return { statusCode: 200, body: { ...(rest !== undefined && { suggestion: rest }) } satisfies components["schemas"]["Suggestion"] };
 };
@@ -228,7 +231,7 @@ const styleNoting = [
  * which the call counts toward.
  */
 export async function noteSent(
-  { table, mailBucket, embedder, suggester }: { table: Table; mailBucket: MailBucket; embedder: Embedder; suggester: Suggester },
+  { region, table, mailBucket, embedder, suggester }: { region: string; table: Table; mailBucket: MailBucket; embedder: Embedder; suggester: Suggester },
   { human, mailbox, message }: { human: string; mailbox: string; message: string },
 ): Promise<void> {
   if (!(await learnsFromMail(table, human))) {
@@ -265,12 +268,12 @@ export async function noteSent(
   if (sent.length === 0) return;
   const prompt = sent.map(({ message }, at) => `<email number="${at + 1}">\nSubject: ${message.subject}\n\n${message.text.slice(0, 2000)}\n</email>`).join("\n\n");
   const model = settings.suggestionModel;
-  const answer = await suggester({ model, system: styleNoting, prompt, maxTokens: 400, seconds: 30 }).catch(async (error: unknown) => {
+  const answer = await suggester({ model, ...suggestionCall(model, region), system: styleNoting, prompt, maxTokens: 400, seconds: 30 }).catch(async (error: unknown) => {
     // The messages claimed wait for the next send instead.
     await documents(table).send(new UpdateCommand({ TableName: table.name, Key: sentKey(human), UpdateExpression: "ADD sent :claimed", ExpressionAttributeValues: { ":claimed": claimed } }));
     throw error;
   });
-  await addSpend(table, month, suggestionCost(answer, model));
+  await addSpend(table, month, suggestionCost(answer, model, region));
   const described = answer.text.trim();
   if (described === "") return;
   const threads = [...new Map(sent.map(({ mailbox: where, thread, message }) => [`${where} ${thread}`, { mailbox: where, thread, subject: message.subject }])).values()];

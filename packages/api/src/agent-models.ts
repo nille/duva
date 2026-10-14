@@ -33,7 +33,8 @@ export const mailboxAgentModels: Record<MailboxAgentModel, Price & { name: strin
   "anthropic.claude-opus-5-5": { name: "Claude Opus 5.5", input: 4.4, output: 22, profiles: ["eu", "us", "global"], inRegion: [] },
   "amazon.nova-2-lite-v1:0": { name: "Amazon Nova 2 Lite", input: 0.363, output: 2.992, profiles: ["eu", "us", "global"], inRegion: [] },
   "amazon.nova-pro-v1:0": { name: "Amazon Nova Pro", input: 0.87, output: 3.48, profiles: ["eu", "us", "none"], inRegion: ["us-east-1"] },
-  "amazon.nova-lite-v1:0": { name: "Amazon Nova Lite", input: 0.065, output: 0.26, profiles: ["eu", "us", "none"], inRegion: ["eu-north-1", "us-east-1", "us-east-2", "us-west-2"] },
+  // Nova Lite also translates searches (#67), so it lists every region where it runs on demand (#181).
+  "amazon.nova-lite-v1:0": { name: "Amazon Nova Lite", input: 0.065, output: 0.26, profiles: ["eu", "us", "none"], inRegion: ["eu-north-1", "eu-west-2", "us-east-1", "us-east-2", "us-west-2", "ap-northeast-1", "ap-southeast-2"] },
   // Through global and us only, at the us price, global's 10% less (model cards, Price List API, 2026-10-10, #150).
   "openai.gpt-6-luna": { name: "GPT-6 Luna", input: 0.11, output: 0.55, cacheRead: 0.011, cacheWrite: 0.1375, profiles: ["global", "us"], inRegion: [] },
   "openai.gpt-6-sol": { name: "GPT-6 Sol", input: 2.2, output: 11, cacheRead: 0.22, cacheWrite: 2.75, profiles: ["global", "us"], inRegion: [] },
@@ -97,20 +98,28 @@ export interface ModelCall {
  */
 export const modelRegion = (region: string): MailboxAgentRegion => (region.startsWith("us-") ? "us-west-2" : "eu-central-1");
 
+/** Where Bedrock runs a model: through the profiles listed, and without one in the regions listed. */
+export interface Offered<Region extends string> {
+  profiles: MailboxAgentProfile[];
+  inRegion: Region[];
+}
+
+/** How a deployment in the region calls one of the mailbox agents' models (ADR-0035). */
+export const callOf = (model: MailboxAgentModel, region: string): ModelCall => nearestCall(mailboxAgentModels[model], region);
+
 /**
- * How a deployment in the region calls the model, keeping the mail as close as the model allows:
- * in the deployment's region itself where the model runs there without a profile, through the
- * profile of the deployment's continent from its model region, in its model region itself, through
- * the global profile, and last, for a model available only in the US, through the us profile from
- * us-west-2, or in us-west-2 itself. A model called in the model region itself processes mail on the
- * deployment's continent, as MiniMax M2.5 does in eu-central-1 for one in eu-north-1. A model of
- * neither profile is called in us-west-2 itself, where each Duva lists without a profile runs
- * (ADR-0035).
+ * How a deployment in the region calls a model Bedrock runs as offered, keeping the mail as close
+ * as the model allows: in the deployment's region itself where the model runs there without a
+ * profile, through the profile of the deployment's continent from its model region, in its model
+ * region itself, through the global profile, and last, for a model available only in the US,
+ * through the us profile from us-west-2, or in us-west-2 itself. A model called in the model region
+ * itself processes mail on the deployment's continent, as MiniMax M2.5 does in eu-central-1 for one
+ * in eu-north-1. A model of neither profile is called in us-west-2 itself, where each Duva lists
+ * without a profile runs (ADR-0035).
  */
-export function callOf(model: MailboxAgentModel, region: string): ModelCall {
-  const { profiles, inRegion } = mailboxAgentModels[model];
-  const runsIn = (where: string) => inRegion.some((one) => one === where);
-  if (runsIn(region)) return { profile: "none", region: region as MailboxAgentRegion, processedIn: "region" };
+function nearestCall<Region extends string>({ profiles, inRegion }: Offered<Region>, region: string): { profile: MailboxAgentProfile; region: Region | MailboxAgentRegion; processedIn: ProcessedIn } {
+  const runsIn = (where: string): where is Region => inRegion.some((one) => one === where);
+  if (runsIn(region)) return { profile: "none", region, processedIn: "region" };
   const continent = region.startsWith("eu-") ? "eu" : region.startsWith("us-") ? "us" : undefined;
   if (continent !== undefined && profiles.includes(continent)) return { profile: continent, region: modelRegion(region), processedIn: "continent" };
   if (continent !== undefined && runsIn(modelRegion(region))) return { profile: "none", region: modelRegion(region), processedIn: "continent" };
@@ -119,7 +128,7 @@ export function callOf(model: MailboxAgentModel, region: string): ModelCall {
 }
 
 /** The ID Converse takes for the model through the profile: the profile's, or without one, the model's own. */
-export const inferenceProfileId = (model: MailboxAgentModel, profile: MailboxAgentProfile) => (profile === "none" ? model : `${profile}.${model}`);
+export const inferenceProfileId = (model: MailboxAgentModel | SuggestionModel, profile: MailboxAgentProfile) => (profile === "none" ? model : `${profile}.${model}`);
 
 /**
  * The model that decides whether the everyday model can take a conversation turn (#132), with its
@@ -149,45 +158,42 @@ export function costOf({ inputTokens, outputTokens, cacheReadInputTokens = 0, ca
 
 export type SuggestionModel = components["schemas"]["SuggestionModel"];
 
-/** How a deployment calls a model: its ID for Converse, from the region. */
-interface SuggestionCall {
-  modelId: string;
-  region: string;
-}
+/**
+ * Where gpt-oss-20b and Qwen3 32B run on demand, of the regions where SES receives mail. Neither
+ * runs in eu-west-3 or us-west-1, nor through a profile (ListFoundationModels and Converse in each
+ * region, 2026-10-14, #181; docs/aws.md).
+ */
+const smallOpenWeightRegions = ["eu-north-1", "eu-central-1", "eu-west-1", "eu-west-2", "eu-south-1", "us-east-1", "us-east-2", "us-west-2", "ap-northeast-1", "ap-south-1", "ap-southeast-2", "sa-east-1"];
 
 /**
  * The models measured for suggestions, each with its price in US dollars per million input and
- * output tokens in eu-north-1, and how a deployment in the region calls it: gpt-oss-20b and Qwen3
- * 32B on demand in the deployment's region, Nova Micro through the continent's profile there, and
- * Claude Haiku 4.5 through it from the model region, since Claude fails from eu-north-1
- * (docs/aws.md). A deployment outside the EU and the US calls them as the decider is called, from
- * eu-central-1 and through eu.
+ * output tokens in eu-north-1, and where Bedrock runs it, by which a deployment calls it as it calls
+ * Coo's models (#181). In the EU and the US, gpt-oss-20b and Qwen3 32B run on demand in the
+ * deployment's region where they run there, and otherwise in eu-central-1 or us-west-2, Nova Micro
+ * on demand in eu-west-2 and us-east-1, and otherwise through the continent's profile from there,
+ * and Claude Haiku 4.5 through that profile. Elsewhere, gpt-oss-20b and Qwen3 32B run in the
+ * deployment's region where they run there, and otherwise in us-west-2, Nova Micro on demand in
+ * ap-southeast-2 and otherwise through us, and Claude Haiku 4.5 through global. So a deployment in
+ * any region where SES receives mail calls each from a region that runs it.
  */
-export const suggestionModels: Record<SuggestionModel, { name: string; input: number; output: number; profiled: boolean; call: (region: string) => SuggestionCall }> = {
-  "openai.gpt-oss-20b-1:0": { name: "gpt-oss-20b", input: 0.07, output: 0.3, profiled: false, call: (region) => ({ modelId: "openai.gpt-oss-20b-1:0", region: nearest(region) }) },
-  "qwen.qwen3-32b-v1:0": { name: "Qwen3 32B", input: 0.15, output: 0.6, profiled: false, call: (region) => ({ modelId: "qwen.qwen3-32b-v1:0", region: nearest(region) }) },
-  "amazon.nova-micro-v1:0": {
-    name: "Amazon Nova Micro",
-    input: 0.038,
-    output: 0.152,
-    profiled: true,
-    call: (region) => ({ modelId: `${deciderProfile(nearest(region))}.amazon.nova-micro-v1:0`, region: nearest(region) }),
-  },
-  "anthropic.claude-haiku-4-5-20251001-v1:0": {
-    name: "Claude Haiku 4.5",
-    input: 1.1,
-    output: 5.5,
-    profiled: true,
-    call: (region) => ({ modelId: `${deciderProfile(modelRegion(region))}.anthropic.claude-haiku-4-5-20251001-v1:0`, region: modelRegion(region) }),
-  },
+export const suggestionModels: Record<SuggestionModel, Offered<string> & { name: string; input: number; output: number }> = {
+  "openai.gpt-oss-20b-1:0": { name: "gpt-oss-20b", input: 0.07, output: 0.3, profiles: ["none"], inRegion: smallOpenWeightRegions },
+  "qwen.qwen3-32b-v1:0": { name: "Qwen3 32B", input: 0.15, output: 0.6, profiles: ["none"], inRegion: smallOpenWeightRegions },
+  "amazon.nova-micro-v1:0": { name: "Amazon Nova Micro", input: 0.038, output: 0.152, profiles: ["eu", "us", "none"], inRegion: ["eu-west-2", "us-east-1", "ap-southeast-2"] },
+  "anthropic.claude-haiku-4-5-20251001-v1:0": mailboxAgentModels["anthropic.claude-haiku-4-5-20251001-v1:0"],
 };
 
-/** The deployment's region in the EU and the US, and its model region elsewhere. */
-const nearest = (region: string) => (region.startsWith("eu-") || region.startsWith("us-") ? region : modelRegion(region));
+/** How a deployment in the region calls the suggestion model: its ID for Converse, from the region. */
+export function suggestionCall(model: SuggestionModel, region: string): { modelId: string; region: string } {
+  const call = nearestCall(suggestionModels[model], region);
+  return { modelId: inferenceProfileId(model, call.profile), region: call.region };
+}
 
-/** What a suggestion's tokens cost, in US dollars. */
-export const suggestionCost = ({ inputTokens, outputTokens }: { inputTokens: number; outputTokens: number }, model: SuggestionModel) =>
-  (inputTokens * suggestionModels[model].input + outputTokens * suggestionModels[model].output) / 1_000_000;
+/** What a suggestion's tokens cost, in US dollars, as a deployment in the region calls the model, the global profile 10% less. */
+export function suggestionCost({ inputTokens, outputTokens }: { inputTokens: number; outputTokens: number }, model: SuggestionModel, region: string): number {
+  const discount = nearestCall(suggestionModels[model], region).profile === "global" ? 1 / 1.1 : 1;
+  return ((inputTokens * suggestionModels[model].input + outputTokens * suggestionModels[model].output) * discount) / 1_000_000;
+}
 
 /** The model that suggests the rest of a sentence until an admin chooses another, the fastest measured for it (docs/research/suggestions.md). */
 export const defaultSuggestionModel: SuggestionModel = "qwen.qwen3-32b-v1:0";

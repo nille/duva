@@ -10249,9 +10249,11 @@ components:
       description: >-
         A model on Amazon Bedrock that suggests the rest of a sentence, by its
         Bedrock model ID, each measured for it (docs/research/suggestions.md):
-        gpt-oss-20b, and Qwen3 32B, the default, on demand in the deployment's
-        region, Amazon Nova Micro through the continent's profile, and Claude
-        Haiku 4.5, the best and slowest, through it from eu-central-1 in the EU.
+        gpt-oss-20b, Qwen3 32B, the default, Amazon Nova Micro, and Claude
+        Haiku 4.5, the best and slowest. Duva calls each as it calls Coo's
+        models: in the deployment's region where the model runs there on
+        demand, and otherwise from eu-central-1 in the EU and us-west-2 in the
+        US, on demand or through the continent's profile.
     Suggestions:
       type: boolean
       description: >-
@@ -10304,7 +10306,7 @@ components:
         capacity. none runs the model in the region it is called in itself.
     MailboxAgentRegion:
       type: string
-      enum: [eu-central-1, eu-west-1, eu-west-3, eu-north-1, us-east-1, us-east-2, us-west-2]
+      enum: [eu-central-1, eu-west-1, eu-west-2, eu-west-3, eu-north-1, us-east-1, us-east-2, us-west-2, ap-northeast-1, ap-southeast-2]
       description: The AWS region Duva calls Bedrock in for a model, which its profile sends on from.
     ProcessedIn:
       type: string

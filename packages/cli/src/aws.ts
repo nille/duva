@@ -42,7 +42,7 @@ import { CreateEmailIdentityCommand, GetAccountCommand, GetEmailIdentityCommand,
 import { GetParameterCommand, ParameterNotFound, SSMClient } from "@aws-sdk/client-ssm";
 import { projectTag } from "@duva/api/infrastructure";
 import { allDomains } from "@duva/api/organization";
-import { deploymentTag, deploymentTagged, stackName, stackOutputs, stackParameters, webHostsIn, webHostsValue } from "@duva/infra/outputs";
+import { deploymentTag, deploymentTagged, runtimeLogGroup, stackName, stackOutputs, stackParameters, webHostsIn, webHostsValue } from "@duva/infra/outputs";
 import { type Aws, sameNames, type StackOutputs, type StackParameters as DuvaParameters } from "./deployment.ts";
 
 export function realAws(region: string): Aws {
@@ -333,7 +333,7 @@ async function tagRuntimeResources(runtime: string) {
   const agentRuntimeId = resource!.split("/")[1]!;
   const endpointName = "DEFAULT";
   const tags = { [projectTag.Key]: projectTag.Value };
-  const logs = `arn:${partition}:logs:${region}:${account}:log-group:/aws/bedrock-agentcore/runtimes/${agentRuntimeId}-${endpointName}`;
+  const logs = `arn:${partition}:logs:${region}:${account}:log-group:${runtimeLogGroup(agentRuntimeId)}`;
   await new CloudWatchLogsClient({ region }).send(new TagLogGroupCommand({ resourceArn: logs, tags })).catch((error: unknown) => {
     if (!(error instanceof NoLogGroup)) throw error;
   });

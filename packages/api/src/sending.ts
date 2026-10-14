@@ -70,7 +70,7 @@ interface Sender {
   /** Where the files uploaded to drafts are, which the sender attaches, then deletes once they went out. */
   uploads: UploadsBucket;
   outbound: Outbound;
-  /** The region SES sends from, which names the Message-ID it gives each message. */
+  /** The deployment's region, which SES sends from and names the Message-ID it gives each message by, and which a style note's model is called for. */
   region: string;
   /** Where the sender asks to be handed an agent again, once its limits allow what waits. */
   schedules: Schedules;

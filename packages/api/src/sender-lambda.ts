@@ -28,7 +28,7 @@ const outbound = sesOutbound(new SESv2Client({ maxAttempts: 1 }), required(envir
 const scheduler = new SchedulerClient({});
 const schedule = { group: required(environmentVariables.scheduleGroup), role: required(environmentVariables.schedulerRole) };
 const downloads = { url: required(environmentVariables.downloadUrl) };
-const styleNotes = { embedder: titanEmbedder(), suggester: bedrockSuggester({ region }) };
+const styleNotes = { embedder: titanEmbedder(), suggester: bedrockSuggester() };
 
 export const handler = (event: Parameters<ReturnType<typeof createSender>>[0], context: Context) =>
   // The schedules invoke this function, which the CDK app can't name in its own environment.

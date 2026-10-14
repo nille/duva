@@ -4,20 +4,22 @@
 //
 // Deactivates Duva's receipt rule set, which SES can't delete while it's active, then deletes
 // the Duva stack, then the table, buckets, user pool and secrets key it keeps on deletion, all their data
-// included, the SES identity deploy made for the first admin's address, and the web app's
-// certificates deploy requested in us-east-1 for the deployment. With --bootstrap, it
+// included, the log groups its deletion leaves, the SES identity deploy made for the first admin's
+// address, and the web app's certificates deploy requested in us-east-1 for the deployment. With --bootstrap, it
 // also deletes the CDK bootstrap stack and its staging bucket, but only when the same duva deploy
 // created both stacks. For test deployments only.
 import { parseArgs } from "node:util";
 import { ACMClient, DeleteCertificateCommand, ListTagsForCertificateCommand, paginateListCertificates } from "@aws-sdk/client-acm";
-import { deploymentTagged, stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
+import { deploymentTagged, logGroupsLeft, stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
 import {
   CloudFormationClient,
   DeleteStackCommand,
   DescribeStacksCommand,
   paginateListStackResources,
+  type StackResourceSummary,
   waitUntilStackDeleteComplete,
 } from "@aws-sdk/client-cloudformation";
+import { CloudWatchLogsClient, DeleteLogGroupCommand, ResourceNotFoundException } from "@aws-sdk/client-cloudwatch-logs";
 import { CognitoIdentityProviderClient, DeleteUserPoolCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { DeleteTableCommand, DynamoDBClient, waitUntilTableNotExists } from "@aws-sdk/client-dynamodb";
 import { KMSClient, ScheduleKeyDeletionCommand } from "@aws-sdk/client-kms";
@@ -34,6 +36,7 @@ const cloudformation = new CloudFormationClient({ region });
 const s3 = new S3Client({ region });
 const dynamodb = new DynamoDBClient({ region });
 const ses = new SESClient({ region });
+const logs = new CloudWatchLogsClient({ region });
 const { Account: account } = await new STSClient({ region }).send(new GetCallerIdentityCommand({}));
 
 const duva = await findStack(stackName);
@@ -69,13 +72,23 @@ for (const stack of [duva, bootstrap]) {
   if (stack?.StackId === undefined) continue;
   await cloudformation.send(new DeleteStackCommand({ StackName: stack.StackId }));
   await waitUntilStackDeleteComplete({ client: cloudformation, maxWaitTime: 900 }, { StackName: stack.StackId });
+  const resources: StackResourceSummary[] = [];
+  for await (const page of paginateListStackResources({ client: cloudformation }, { StackName: stack.StackId })) resources.push(...(page.StackResourceSummaries ?? []));
   // What the stack keeps on deletion is left behind as DELETE_SKIPPED.
-  for await (const page of paginateListStackResources({ client: cloudformation }, { StackName: stack.StackId })) {
-    for (const resource of page.StackResourceSummaries ?? []) {
-      if (resource.ResourceStatus !== "DELETE_SKIPPED" || !resource.PhysicalResourceId) continue;
-      await deleteKept(resource.ResourceType ?? "", resource.PhysicalResourceId);
-      console.log(`Deleted ${resource.ResourceType} ${resource.PhysicalResourceId}`);
-    }
+  for (const resource of resources) {
+    if (resource.ResourceStatus !== "DELETE_SKIPPED" || !resource.PhysicalResourceId) continue;
+    await deleteKept(resource.ResourceType ?? "", resource.PhysicalResourceId);
+    console.log(`Deleted ${resource.ResourceType} ${resource.PhysicalResourceId}`);
+  }
+  for (const logGroupName of logGroupsLeft(resources)) {
+    const existed = await logs.send(new DeleteLogGroupCommand({ logGroupName })).then(
+      () => true,
+      (error: unknown) => {
+        if (error instanceof ResourceNotFoundException) return false;
+        throw error;
+      },
+    );
+    if (existed) console.log(`Deleted the log group ${logGroupName}`);
   }
   console.log(`Deleted stack ${stack.StackName}`);
 }

@@ -3,11 +3,12 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { alertMailFilter, embeddingModel, environmentVariables, feederFilter, hostedLogoHeaders, mcpRoutes, senderFilter, senderRetries, taskGiverFilter, timeToLiveAttribute, translationModel } from "@duva/api/infrastructure";
+import { alertMailFilter, embeddingModel, environmentVariables, feederFilter, hostedLogoHeaders, mcpRoutes, senderFilter, senderRetries, taskGiverFilter, timeToLiveAttribute } from "@duva/api/infrastructure";
 import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { afterAll, expect, test } from "vitest";
 import { duvaApp } from "../src/app.ts";
+import { logGroupsLeft } from "../src/outputs.ts";
 
 interface Resource {
   Type: string;
@@ -286,7 +287,8 @@ function functionUrl(lambdaId: string): [string, Resource] {
 /** The statements of the IAM policies on the role of the Lambda whose ID starts with `prefix`. */
 function statements(prefix: string): { Action: string | string[]; Resource: unknown }[] {
   const role = JSON.stringify(lambda(prefix)[1].Properties?.Role?.["Fn::GetAtt"]?.[0]);
-  return ofType("AWS::IAM::Policy")
+  // What outgrows a role's own policy, CDK moves to a managed policy of its own.
+  return [...ofType("AWS::IAM::Policy"), ...ofType("AWS::IAM::ManagedPolicy")]
     .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: unknown) => JSON.stringify((ref as { Ref?: string }).Ref) === role))
     .flatMap(([, { Properties }]) => Properties?.PolicyDocument?.Statement ?? []);
 }
@@ -444,7 +446,7 @@ test("only the API and the sender write to the uploads bucket, the sender a forw
   for (const id of ["ApiHandler", "SenderHandler", "EraserHandler"]) expect(onBucket(id)).toContain("s3:AbortMultipartUpload");
 });
 
-test("only search, the indexer, the conversation Lambda, the API, the sender and the task runner call Bedrock, each to embed with Titan and search also to translate with Nova Lite, in the deployment's region, and the API and the sender to suggest", () => {
+test("only search, the indexer, the conversation Lambda, the API, the sender and the task runner call Bedrock, each to embed with Titan in the deployment's region, search also to translate with Nova Lite, and the API and the sender to suggest", () => {
   const model = (id: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:", { Ref: "AWS::Region" }, `::foundation-model/${id}`]] });
   const onBedrock = (prefix: string) => statements(prefix).filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
   // Each Bedrock statement invokes models and nothing else, and these are all the models invoked.
@@ -453,8 +455,7 @@ test("only search, the indexer, the conversation Lambda, the API, the sender and
     for (const statement of found) expect(statement).toEqual(expect.objectContaining({ Action: "bedrock:InvokeModel", Effect: "Allow" }));
     return found.flatMap(({ Resource }) => [Resource].flat());
   };
-  expect(invoked("SearchHandler")).toEqual(expect.arrayContaining([model(embeddingModel), model(translationModel)]));
-  expect(invoked("SearchHandler")).toHaveLength(2);
+  expect(invoked("SearchHandler")).toContainEqual(model(embeddingModel));
   expect(invoked("IndexerHandler")).toEqual([model(embeddingModel)]);
   // The conversation Lambda keeps each turn's routing with its words' embedding (ADR-0032).
   expect(invoked("ConversationHandler")).toEqual([model(embeddingModel)]);
@@ -1120,6 +1121,19 @@ test("every Lambda keeps its log a month, so nothing it logs, a drop's record in
   }
 });
 
+test("the log groups the destroy script deletes once the stack is deleted are each the stack's Lambdas log to, which one invoked as the stack is deleted makes again, and the one AgentCore makes for the runtime", () => {
+  // As CloudFormation lists the stack's resources once deleted, the runtime by the ID it had in #174's run in eu-west-3.
+  const physical = (id: string, type: string) => (type === "AWS::BedrockAgentCore::Runtime" ? "DuvaMailboxAgents541EB471-qigNZr8BRn" : `Duva-${id}-AbCdEf`);
+  const listed = resources.map(([id, { Type }]) => ({ ResourceType: Type, PhysicalResourceId: physical(id, Type), ResourceStatus: "DELETE_COMPLETE" }));
+
+  const left = logGroupsLeft(listed);
+
+  const logged = ofType("AWS::Lambda::Function").map(([, { Properties }]) => `Duva-${Properties?.LoggingConfig?.LogGroup?.Ref}-AbCdEf`);
+  expect(logged.some((name) => name.startsWith("Duva-WebSearchGatewayLogs"))).toBe(true);
+  // AgentCore names the runtime's log group for its DEFAULT endpoint, as CloudTrail showed it creating it in that run.
+  expect(left.toSorted()).toEqual([...logged, "/aws/bedrock-agentcore/runtimes/DuvaMailboxAgents541EB471-qigNZr8BRn-DEFAULT"].toSorted());
+});
+
 test("the inbound Lambda may publish the drop metric: its role may write its log, which is kept as text, as the metric's lines are written", () => {
   const [, { Properties }] = lambda("InboundHandler");
   // Real runs check the metric with the text log format, where each line reaches CloudWatch as written.
@@ -1367,6 +1381,9 @@ test("where AgentCore isn't, the stack leaves out the runtime and everything it 
   for (const [id] of policies) expect((stack.template.Resources[id] as { Condition?: string }).Condition, id).toBe("MailboxAgentsCondition");
 });
 
+/** Where Nova Lite runs on demand: ListFoundationModels and Converse in each region where SES receives mail (docs/aws.md, #181). */
+const novaLiteRegions = ["eu-north-1", "eu-west-2", "us-east-1", "us-east-2", "us-west-2", "ap-northeast-1", "ap-southeast-2"];
+
 test("the mailbox agents may call only the models admins can choose, through the profiles each has in any region, or in the regions where they run without one, and the decider through the eu and us profiles", () => {
   const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
   const role = JSON.stringify((runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]);
@@ -1387,11 +1404,12 @@ test("the mailbox agents may call only the models admins can choose, through the
   ];
   // IAM's order of a statement's resources means nothing, and CDK sorts them.
   const sorted = (values: unknown[]) => values.map((value) => JSON.stringify(value)).sort();
-  // Nova Lite runs without a profile in eu-north-1 and three US regions, Nova Pro in us-east-1, and
-  // the open-weight models on demand where docs/aws.md found them (docs/research/coo-models.md).
+  // Nova Lite runs without a profile in eu-north-1, eu-west-2, three US regions, Tokyo and Sydney
+  // (#181), Nova Pro in us-east-1, and the open-weight models on demand where docs/aws.md found them
+  // (docs/research/coo-models.md).
   const inRegion = [
     "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0",
-    ...["eu-north-1", "us-east-1", "us-east-2", "us-west-2"].map((region) => `arn:aws:bedrock:${region}::foundation-model/amazon.nova-lite-v1:0`),
+    ...novaLiteRegions.map((region) => `arn:aws:bedrock:${region}::foundation-model/amazon.nova-lite-v1:0`),
     ...["openai.gpt-oss-120b-1:0", "qwen.qwen3-235b-a22b-2507-v1:0"].flatMap((model) => ["eu-north-1", "eu-central-1", "us-west-2"].map((region) => `arn:aws:bedrock:${region}::foundation-model/${model}`)),
     ...["deepseek.v3.2", "zai.glm-5", "moonshotai.kimi-k2.5"].flatMap((model) => ["eu-north-1", "us-west-2"].map((region) => `arn:aws:bedrock:${region}::foundation-model/${model}`)),
     ...["eu-central-1", "us-west-2"].map((region) => `arn:aws:bedrock:${region}::foundation-model/minimax.minimax-m2.5`),
@@ -1401,24 +1419,52 @@ test("the mailbox agents may call only the models admins can choose, through the
   for (const statement of [unconditioned!, onModels!]) expect(statement).toMatchObject({ Effect: "Allow", Action: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"] });
   expect(sorted(unconditioned!.Resource)).toEqual(sorted([...profiles, ...inRegion]));
   expect(unconditioned!.Condition).toBeUndefined();
-  expect(sorted(onModels!.Resource)).toEqual(sorted(models.flatMap((model) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`])));
+  // Only the models with a profile, as the open-weight models run only on demand.
+  expect(sorted(onModels!.Resource)).toEqual(sorted(models.filter((model) => !onDemand.includes(model)).flatMap((model) => [`arn:aws:bedrock:*::foundation-model/${model}`, `arn:aws:bedrock:::foundation-model/${model}`])));
   expect(sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"] as unknown[])).toEqual(sorted(profiles));
 });
 
-test("the API and the sender may call only the suggestion models: gpt-oss-20b and Qwen3 32B on demand, and Nova Micro and Claude Haiku 4.5 through their eu and us profiles", () => {
-  const onDemand = ["openai.gpt-oss-20b-1:0", "qwen.qwen3-32b-v1:0"].map((model) => `arn:aws:bedrock:*::foundation-model/${model}`);
-  const profiled = ["amazon.nova-micro-v1:0", "anthropic.claude-haiku-4-5-20251001-v1:0"];
-  const profiles = profiled.flatMap((model) => ["eu", "us"].map((name) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:*:", { Ref: "AWS::AccountId" }, `:inference-profile/${name}.${model}`]] })));
+/** The resources of the Lambda's two statements that invoke models, without Titan's, which CDK merges into the first, and the profiles the second takes the models through. */
+function invokedModels(prefix: string) {
+  const invoking = (statements(prefix) as { Action: string | string[]; Resource: unknown; Condition?: { StringLike: Record<string, unknown> } }[]).filter(({ Action }) => [Action].flat().includes("bedrock:InvokeModel"));
+  expect(invoking.map(({ Action }) => Action)).toEqual(["bedrock:InvokeModel", "bedrock:InvokeModel"]);
+  const [unconditioned, onModels] = invoking;
+  expect(unconditioned!.Condition).toBeUndefined();
   const sorted = (values: unknown) => [values].flat().map((value) => JSON.stringify(value)).sort();
+  return {
+    anywhere: sorted(unconditioned!.Resource).filter((resource) => !resource.includes("titan-embed")),
+    throughProfiles: sorted(onModels!.Resource),
+    profiles: sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"]),
+  };
+}
+
+const inferenceProfile = (id: string) => JSON.stringify({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":bedrock:*:", { Ref: "AWS::AccountId" }, `:inference-profile/${id}`]] });
+const foundationModel = (model: string, regions: string[]) => regions.map((region) => JSON.stringify(`arn:aws:bedrock:${region}::foundation-model/${model}`));
+
+test("search may call Nova Lite on demand where it runs so, and through its eu and us profiles, as in eu-west-3, where it runs only through eu", () => {
+  const novaLite = "amazon.nova-lite-v1:0";
+  const profiles = ["eu", "us"].map((name) => inferenceProfile(`${name}.${novaLite}`));
+
+  const { anywhere, throughProfiles, profiles: through } = invokedModels("SearchHandler");
+
+  expect(anywhere).toEqual([...foundationModel(novaLite, novaLiteRegions), ...profiles].sort());
+  expect(throughProfiles).toEqual(foundationModel(novaLite, ["*", ""]).sort());
+  expect(through).toEqual(profiles.sort());
+});
+
+test("the API and the sender may call only the suggestion models: gpt-oss-20b and Qwen3 32B on demand where they run so, Nova Micro so in three regions and through its eu and us profiles, and Claude Haiku 4.5 through its eu, us and global profiles", () => {
+  // From ListFoundationModels and Converse in each region where SES receives mail (docs/aws.md, #181).
+  const smallOpenWeight = ["eu-north-1", "eu-central-1", "eu-west-1", "eu-west-2", "eu-south-1", "us-east-1", "us-east-2", "us-west-2", "ap-northeast-1", "ap-south-1", "ap-southeast-2", "sa-east-1"];
+  const [micro, haiku] = ["amazon.nova-micro-v1:0", "anthropic.claude-haiku-4-5-20251001-v1:0"];
+  const profiles = [...["eu", "us"].map((name) => inferenceProfile(`${name}.${micro}`)), ...["eu", "us", "global"].map((name) => inferenceProfile(`${name}.${haiku}`))];
   for (const prefix of ["ApiHandler", "SenderHandler"]) {
-    const suggesting = (statements(prefix) as { Action: string | string[]; Resource: unknown; Condition?: { StringLike: Record<string, unknown[]> } }[]).filter(({ Action }) => [Action].flat().includes("bedrock:InvokeModel"));
-    expect(suggesting.map(({ Action }) => Action)).toEqual(["bedrock:InvokeModel", "bedrock:InvokeModel"]);
-    const [unconditioned, onModels] = suggesting;
-    // CDK merges Titan's statement, which the test above covers, into the unconditioned one.
-    expect(sorted(unconditioned!.Resource).filter((resource) => !resource.includes("titan-embed"))).toEqual(sorted([...onDemand, ...profiles]));
-    expect(unconditioned!.Condition).toBeUndefined();
-    expect(sorted(onModels!.Resource)).toEqual(sorted(profiled.map((model) => `arn:aws:bedrock:*::foundation-model/${model}`)));
-    expect(sorted(onModels!.Condition!.StringLike["bedrock:InferenceProfileArn"])).toEqual(sorted(profiles));
+    const { anywhere, throughProfiles, profiles: through } = invokedModels(prefix);
+
+    expect(anywhere).toEqual(
+      [...foundationModel("openai.gpt-oss-20b-1:0", smallOpenWeight), ...foundationModel("qwen.qwen3-32b-v1:0", smallOpenWeight), ...foundationModel(micro, ["eu-west-2", "us-east-1", "ap-southeast-2"]), ...profiles].sort(),
+    );
+    expect(throughProfiles).toEqual([...foundationModel(micro, ["*", ""]), ...foundationModel(haiku, ["*", ""])].sort());
+    expect(through).toEqual(profiles.sort());
   }
 });
 

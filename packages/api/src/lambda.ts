@@ -83,7 +83,7 @@ export const handler = createApi({
   ),
   tasks: lambdaTaskRunner(lambda, required(environmentVariables.taskRunnerFunction)),
   embedder: titanEmbedder(),
-  suggester: bedrockSuggester({ region: required("AWS_REGION") }),
+  suggester: bedrockSuggester(),
   browserProfiles: agentCoreBrowserProfiles(process.env[environmentVariables.browser] ?? ""),
   secretKeys: kmsSecretKeys(required(environmentVariables.secretsKey)),
 });

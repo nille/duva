@@ -962,8 +962,8 @@ export const strings = {
         hint: "The rest of a sentence in grey after the cursor, which Tab takes. Each is one small model call, which counts toward the spend cap. Each human can also switch them off for themselves.",
         model: "Suggestion model",
         models: {
-          "qwen.qwen3-32b-v1:0": "Qwen3 32B, the fastest, in this region. The default",
-          "openai.gpt-oss-20b-1:0": "gpt-oss-20b, in this region",
+          "qwen.qwen3-32b-v1:0": "Qwen3 32B, the fastest, in this region or on this continent. The default",
+          "openai.gpt-oss-20b-1:0": "gpt-oss-20b, in this region or on this continent",
           "amazon.nova-micro-v1:0": "Amazon Nova Micro, the cheapest, in this continent's regions",
           "anthropic.claude-haiku-4-5-20251001-v1:0": "Claude Haiku 4.5, the best and twice as slow, in this continent's regions",
         },

@@ -228,8 +228,9 @@ test("an admin allows measured models, each flagged with where it processes mail
 });
 
 test("allowing a model that processes mail outside the deployment's continent says so first, and waits for the admin", budget, async () => {
-  // In Sydney, Claude runs only through the global profile, so anywhere, and Nova Lite through the US's.
-  const { page, signIn, duva } = await withMailbox({ models: "defaults", region: "ap-southeast-2" });
+  // In Mumbai, Claude runs only through the global profile, so anywhere, and Nova Lite, which runs there
+  // only through the apac profile, through the US's (docs/aws.md).
+  const { page, signIn, duva } = await withMailbox({ models: "defaults", region: "ap-south-1" });
   await signIn("ada@example.org");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Mail and agents/ }).click();

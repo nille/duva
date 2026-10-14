@@ -208,7 +208,8 @@ export interface DuvaOptions {
   tasksHeld?: boolean;
   /**
    * The model suggestions and style notes ask, in place of the organization's suggestion model on Bedrock: a stand-in that
-   * answers as a test scripts it, from what it is told and asked. Unless given, it answers nothing.
+   * answers as a test scripts it, from what it is told and asked, and is given the model ID and region Duva calls it by.
+   * Unless given, it answers nothing.
    */
   suggester?: Suggester;
 }
