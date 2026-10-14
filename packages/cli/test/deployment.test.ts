@@ -1,6 +1,6 @@
 // These tests drive duva deploy's logic, with AWS and DNS replaced by in-memory stand-ins.
 import { describe, expect, test } from "vitest";
-import { deployDuva, type Aws, type Dns, type StackOutputs } from "../src/deployment.ts";
+import { deployDuva, type Aws, type RecordType, type StackOutputs, type ZoneDns } from "../src/deployment.ts";
 
 /** The first admin's address, on a domain other than the deployment's. */
 const admin = "ada@example.org";
@@ -221,6 +221,16 @@ test("two DMARC records at the domain show as different, since receivers then ap
   const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(report.domain.records.at(-1)).toMatchObject({ status: "different", found: ["v=DMARC1; p=none;", "v=DMARC1; p=reject;"] });
+});
+
+test("a DMARC record a CNAME leads to, as a DMARC service keeps it, counts as live", async () => {
+  const world = newWorld();
+  world.dns.records.set("CNAME _dmarc.duva.example.com", ["duva.example.com._dmarc.dmarc.example.net"]);
+  world.dns.records.set("TXT duva.example.com._dmarc.dmarc.example.net", ["v=DMARC1; p=reject;"]);
+
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
+
+  expect(report.domain.records.at(-1)).toMatchObject({ purpose: "DMARC", status: "live" });
 });
 
 test("deploy prints no DMARC record when a parent domain's record covers the domain", async () => {
@@ -554,6 +564,80 @@ test("deploy given a web host requests its certificate, prints the records that 
   ]);
 });
 
+test("deploy prints the records that validate the certificate before it waits, asking ACM again while its answers lack a host's", async () => {
+  const world = newWorld();
+  // Just after the request ACM may answer without the certificate's names or their records.
+  world.aws.answersWithoutRecords = 2;
+  world.onWait = (waits) => {
+    if (waits === 4) world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
+  };
+
+  await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" });
+
+  expect(world.said.slice(0, 2)).toEqual([
+    "Add a CNAME record at _v.duva.example.com with the value _v.duva-example-com.acm-validations.aws, so ACM can validate the web app's certificate for duva.example.com.",
+    "Waiting until ACM has validated the web app's certificate. You can stop, and run duva deploy again, which waits for the same one.",
+  ]);
+  // A few seconds apart, sooner than deploy looks whether ACM has validated it.
+  expect(world.waits.slice(0, 2).every((ms) => ms <= 5_000)).toBe(true);
+});
+
+test("deploy stops asking for the certificate's records when ACM gives none within a minute, and deploys nothing", async () => {
+  const world = newWorld();
+  world.aws.answersWithoutRecords = Infinity;
+
+  await expect(deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" })).rejects.toThrow(
+    "ACM hasn't given the records that validate the web app's certificate for duva.example.com. Run duva deploy again, which waits for the same certificate.",
+  );
+  expect(world.said).toEqual([]);
+  expect(world.waits.reduce((total, wait) => total + wait, 0)).toBeLessThanOrEqual(60_000);
+  expect(world.aws.changes).toEqual(["requested a certificate for duva.example.com"]);
+});
+
+test("a record added after the resolver cached its NXDOMAIN shows as live as soon as the zone has it", async () => {
+  const world = newWorld();
+  // The resolver keeps each NXDOMAIN it got before the admin added the records.
+  for (const name of ["_v.duva.example.com", "duva.example.com", "tok1._domainkey.example.com"]) world.dns.nxdomains.add(name);
+  world.dns.records.set("CNAME tok1._domainkey.example.com", ["tok1.dkim.amazonses.com"]);
+  world.dns.records.set("CNAME duva.example.com", ["d111111abcdef8.cloudfront.net"]);
+  world.onWait = (waits) => {
+    if (waits === 2) world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
+  };
+
+  const report = await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" });
+
+  expect(world.said).toContain("DNS has the record at _v.duva.example.com.");
+  expect(report.web?.records.map(({ name, status }) => ({ name, status }))).toEqual([
+    { name: "_v.duva.example.com", status: "live" },
+    { name: "duva.example.com", status: "live" },
+  ]);
+  expect(report.domain.records[1]).toMatchObject({ purpose: "DKIM", name: "tok1._domainkey.example.com", status: "live" });
+  expect(report.admin.signIn).not.toMatch(/once DNS has/);
+});
+
+test("a host's CNAME to CloudFront, whose distribution's domain is a zone of its own, still reads from the organization's zone", async () => {
+  const world = newWorld();
+  world.dns.records.set("CNAME duva.example.com", ["d111111abcdef8.cloudfront.net"]);
+  world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
+
+  const report = await deployDuva({ ...world, admin, recovery, domain: "example.com", web: "duva.example.com" });
+
+  expect(report.web?.records.map(({ name, status }) => ({ name, status }))).toEqual([
+    { name: "_v.duva.example.com", status: "live" },
+    { name: "duva.example.com", status: "live" },
+  ]);
+});
+
+test("where DNS can't reach a zone's name servers, deploy reads the records through the system's resolver", async () => {
+  const world = newWorld();
+  world.dns.nameServersUnreachable = true;
+  world.dns.records.set("MX duva.example.com", ["10 inbound-smtp.eu-north-1.amazonaws.com"]);
+
+  const report = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
+
+  expect(report.domain.records.map(({ status }) => status)).toEqual(["live", "missing", "missing", "missing", "missing", "missing", "missing"]);
+});
+
 test("deploy says which records the web app needs in DNS: its certificate's, and its host's CNAME to CloudFront", async () => {
   const world = newWorld();
   world.dns.records.set("CNAME _v.duva.example.com", ["_v.duva-example-com.acm-validations.aws"]);
@@ -635,9 +719,10 @@ test("moving the web app keeps its earlier host for links already sent, with one
   expect([...world.aws.certificates.keys()]).toEqual(["arn:aws:acm:us-east-1:123456789012:certificate/2"]);
   expect(world.aws.certificates.get("arn:aws:acm:us-east-1:123456789012:certificate/2")?.names).toEqual(["web.example.com", "duva.example.com"]);
   // The new host can point at CloudFront while ACM validates, so the web app opens there once it moves.
-  expect(world.said.slice(0, 3)).toEqual([
+  expect(world.said.slice(0, 4)).toEqual([
     "Add a CNAME record at web.example.com with the value d111111abcdef8.cloudfront.net, where the web app moves once deploy is done.",
     "Add a CNAME record at _v.web.example.com with the value _v.web-example-com.acm-validations.aws, so ACM can validate the web app's certificate for web.example.com and duva.example.com.",
+    "DNS has the record at _v.duva.example.com.",
     "Waiting until ACM has validated the web app's certificate. You can stop, and run duva deploy again, which waits for the same one.",
   ]);
   expect(report.webUrl).toBe("https://web.example.com");
@@ -714,13 +799,13 @@ interface Parameters {
   webCertificate: string;
 }
 
-/** The record ACM validates the name by. */
-const validation = (name: string) => ({ name: `_v.${name}`, value: `_v.${name.replaceAll(".", "-")}.acm-validations.aws` });
+/** The record ACM validates the host by. */
+const validation = (host: string) => ({ host, name: `_v.${host}`, value: `_v.${host.replaceAll(".", "-")}.acm-validations.aws` });
 
 class InMemoryAws implements Aws {
   /** The DNS ACM looks its validation records up in. */
-  readonly dns: Dns;
-  constructor(dns: Dns) {
+  readonly dns: InMemoryDns;
+  constructor(dns: InMemoryDns) {
     this.dns = dns;
   }
   region = "eu-north-1";
@@ -754,9 +839,11 @@ class InMemoryAws implements Aws {
   /** The domains admins added to the organization after the first. */
   addedDomains: string[] = [];
   /** ACM's certificates in us-east-1, by ARN, with the region of the deployment that requested each. */
-  certificates = new Map<string, { names: string[]; status: string; failure?: string; deployment: string }>();
+  certificates = new Map<string, { names: string[]; status: string; failure?: string; deployment: string; answers: number }>();
   /** Why ACM fails to validate the certificates it is asked for, if it does. */
   certificateFailure?: string;
+  /** How many times ACM answers for a certificate it was just asked for before it has the certificate's names and their records. */
+  answersWithoutRecords = 0;
 
   async duvaStack() {
     return this.stack;
@@ -887,10 +974,11 @@ class InMemoryAws implements Aws {
   async certificate(arn: string) {
     const certificate = this.certificates.get(arn);
     if (certificate === undefined) return undefined;
+    if (certificate.answers++ < this.answersWithoutRecords) return { names: [], status: certificate.status, records: [] };
     const records = certificate.names.map(validation);
     if (certificate.status === "PENDING_VALIDATION" && this.certificateFailure !== undefined) Object.assign(certificate, { status: "FAILED", failure: this.certificateFailure });
     // ACM validates a certificate once DNS has the record for each of its names.
-    const found = await Promise.all(records.map(async ({ name, value }) => (await this.dns.resolve("CNAME", name)).some((each) => each.replace(/\.$/, "") === value)));
+    const found = records.map(({ name, value }) => this.dns.answer("CNAME", name).some((each) => each.replace(/\.$/, "") === value));
     if (certificate.status === "PENDING_VALIDATION" && found.every(Boolean)) certificate.status = "ISSUED";
     return { names: certificate.names, status: certificate.status, ...(certificate.failure !== undefined && { failure: certificate.failure }), records };
   }
@@ -905,7 +993,7 @@ class InMemoryAws implements Aws {
 
   async requestCertificate(names: string[]) {
     const arn = `arn:aws:acm:us-east-1:${this.account}:certificate/${++this.certificatesRequested}`;
-    this.certificates.set(arn, { names, status: "PENDING_VALIDATION", deployment: this.region });
+    this.certificates.set(arn, { names, status: "PENDING_VALIDATION", deployment: this.region, answers: 0 });
     this.changes.push(`requested a certificate for ${names.join(", ")}`);
     return arn;
   }
@@ -920,13 +1008,46 @@ class InMemoryAws implements Aws {
   private certificatesRequested = 0;
 }
 
-class InMemoryDns implements Dns {
-  /** Records by "TYPE name". A failure stands for a DNS lookup that fails. */
+/**
+ * DNS where each registered domain, a name of two labels, is a zone, and so is CloudFront's domain
+ * for the distribution. A zone's name server is ns.<zone>. The system's resolver asks the zones,
+ * except at the names it has kept an NXDOMAIN for.
+ */
+class InMemoryDns implements ZoneDns {
+  /** The zones' records, by "TYPE name". A failure stands for a DNS lookup that fails. */
   records = new Map<string, string[] | Error>();
+  /** The names the system's resolver has kept an NXDOMAIN for, from before they had records, and answers nothing at. */
+  nxdomains = new Set<string>();
+  /** The zones below a registered domain. */
+  zones = new Set(["d111111abcdef8.cloudfront.net"]);
+  /** Whether the network lets DNS reach only the system's resolver. */
+  nameServersUnreachable = false;
 
-  async resolve(type: "MX" | "TXT" | "CNAME", name: string) {
+  async resolve(type: RecordType | "NS", name: string): Promise<string[]> {
+    if (this.nxdomains.has(name)) return [];
+    if (type !== "NS") return this.answer(type, name);
+    // Asked for the NS records at a CNAME's name, a resolver gives those of where it leads.
+    const cname = this.records.get(`CNAME ${name}`);
+    if (Array.isArray(cname) && cname[0] !== undefined) return this.resolve("NS", cname[0]);
+    return this.zoneOf(name) === name ? [`ns.${name}`] : [];
+  }
+
+  async resolveAt(nameServers: string[], type: RecordType, name: string) {
+    if (this.nameServersUnreachable) throw new Error(`query${type} ETIMEOUT ${name}`);
+    // A name server answers only for its own zones.
+    if (!nameServers.includes(`ns.${this.zoneOf(name)}`)) throw new Error(`query${type} EREFUSED ${name}`);
+    return this.answer(type, name);
+  }
+
+  /** The records of the type at the name, as its zone has them. */
+  answer(type: RecordType, name: string) {
     const found = this.records.get(`${type} ${name}`) ?? [];
     if (found instanceof Error) throw found;
     return found;
+  }
+
+  /** The zone the name is in. */
+  private zoneOf(name: string) {
+    return [...this.zones].find((zone) => name === zone || name.endsWith(`.${zone}`)) ?? name.split(".").slice(-2).join(".");
   }
 }

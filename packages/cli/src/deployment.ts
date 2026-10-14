@@ -3,14 +3,14 @@
 // AWS and DNS sit behind small interfaces: aws.ts and the API's dns-records.ts have the real ones.
 // Every later domain is the API's to add and remove at run time (ADR-0018).
 import { callOf, defaultHarderModel, defaultMailboxAgentModel, mailboxAgentModels } from "@duva/api/agent-models";
-import { asciiDomain, checkRecord, type Dns, type DnsRecord, domainRecords, mailFromDomain, verification } from "@duva/api/dns-records";
+import { asciiDomain, authoritative, checkRecord, type Dns, type DnsRecord, domainRecords, mailFromDomain, verification, type ZoneDns } from "@duva/api/dns-records";
 import { domainOf } from "@duva/api/email-address";
 import { type SetupAnswer, signInSender } from "@duva/api/infrastructure";
 import type { WebAppConfig } from "@duva/client";
 import type { SignInConfig } from "@duva/client/sign-in";
 import { cliRedirectUri, stackOutputs } from "@duva/infra/outputs";
 
-export type { Dns } from "@duva/api/dns-records";
+export type { RecordType, ZoneDns } from "@duva/api/dns-records";
 
 /** The Duva stack's outputs, by output name. */
 export type StackOutputs = Record<string, string>;
@@ -44,8 +44,8 @@ export interface Certificate {
   status: string;
   /** Why ACM couldn't validate it, if it couldn't. */
   failure?: string;
-  /** The CNAME record that validates each name, once ACM has given them. */
-  records: { name: string; value: string }[];
+  /** The CNAME record that validates each name, the host, once ACM has given them. */
+  records: { host: string; name: string; value: string }[];
 }
 
 export interface Aws {
@@ -103,7 +103,7 @@ export interface Aws {
 /** What deploy works through: AWS, DNS, a way to say what a human needs to do while it runs, and a way to wait. */
 export interface Deployer {
   aws: Aws;
-  dns: Dns;
+  dns: ZoneDns;
   say(line: string): void;
   wait(ms: number): Promise<void>;
 }
@@ -111,12 +111,17 @@ export interface Deployer {
 /** Whether the names are the same, in any order. */
 export const sameNames = (names: string[], others: string[]) => names.length === others.length && names.every((name) => others.includes(name));
 
+/** How often deploy asks ACM for the records that validate the web app's certificate, and for how long. */
+const recordsCheckEvery = 3_000;
+const recordsWait = 60_000;
 /** How often deploy looks whether ACM has validated the web app's certificate, and for how long. */
 const certificateCheckEvery = 15_000;
 const certificateWait = 3_600_000;
 
 /** Deploys Duva, saying what it needs a human to do while it runs, and waiting for it, as for the web app's certificate. */
-export async function deployDuva({ aws, dns, say, wait, ...given }: Deployer & { domain?: string; admin?: string; recovery?: string; web?: string }) {
+export async function deployDuva({ aws, dns: zoneDns, say, wait, ...given }: Deployer & { domain?: string; admin?: string; recovery?: string; web?: string }) {
+  // A human adds the records deploy prints while it runs, after a resolver may have cached their absence.
+  const dns = authoritative(zoneDns);
   const stack = await aws.duvaStack();
   const domain = given.domain === undefined ? stack?.domain : domainGiven(given.domain);
   if (domain === undefined) throw new Error("Give the organization's first domain, like duva deploy --domain example.com.");
@@ -304,51 +309,67 @@ function webHostGiven(given: string, domains: string[]): string {
  * this deployment requested for them. For a new one, deploy says which records ACM validates it by,
  * then waits until ACM has validated it, for an hour at most. A re-run waits for the same one.
  */
-async function certificateFor({ aws, dns, say, wait }: Deployer, hosts: string[], current: string | undefined): Promise<string> {
+async function certificateFor({ aws, dns, say, wait }: Omit<Deployer, "dns"> & { dns: Dns }, hosts: string[], current: string | undefined): Promise<string> {
   const stackCertificate = current ? await aws.certificate(current) : undefined;
   if (current && stackCertificate?.status === "ISSUED" && sameNames(stackCertificate.names, hosts)) return current;
 
   const arn = (await aws.findCertificate(hosts)) ?? (await aws.requestCertificate(hosts));
   const hostsNamed = hosts.join(" and ");
-  let waiting: Set<string> | undefined;
-  for (let waited = 0; ; waited += certificateCheckEvery) {
+  // ACM's answer, unless it has no certificate or couldn't validate it, which stops deploy.
+  const pending = async () => {
     const certificate = await aws.certificate(arn);
     if (certificate === undefined) throw new Error(`ACM has no certificate ${arn} in us-east-1. Run duva deploy again for another.`);
     if (certificate.status !== "ISSUED" && certificate.status !== "PENDING_VALIDATION") {
       throw new Error(`ACM couldn't validate the web app's certificate for ${hostsNamed}: ${certificate.failure ?? certificate.status}. Fix what stopped it, and run duva deploy again for another.`);
     }
-    // ACM gives each name's record moments after the request.
-    const records = await Promise.all(certificate.records.map((record) => checkRecord(dns, { purpose: "certificate", type: "CNAME", ...record })));
-    if (waiting !== undefined) {
-      for (const { name, status } of records) if (status === "live" && waiting.delete(name)) say(`DNS has the record at ${name}.`);
+    return certificate;
+  };
+  const everyHostsRecord = ({ records }: Certificate) => hosts.every((host) => records.some((record) => record.host === host));
+
+  // ACM gives each host's record moments after the request, and may answer before it has (#180).
+  let certificate = await pending();
+  for (let waited = 0; certificate.status !== "ISSUED" && !everyHostsRecord(certificate); waited += recordsCheckEvery) {
+    if (waited >= recordsWait) throw new Error(`ACM hasn't given the records that validate the web app's certificate for ${hostsNamed}. Run duva deploy again, which waits for the same certificate.`);
+    await wait(recordsCheckEvery);
+    certificate = await pending();
+  }
+  if (certificate.status === "ISSUED") return arn;
+
+  const waiting = new Set<string>();
+  for (const { name, value, status } of await validationRecords(dns, certificate)) {
+    if (status === "live") {
+      say(`DNS has the record at ${name}.`);
+      continue;
     }
-    if (certificate.status === "ISSUED") {
-      if (waiting !== undefined) say("ACM has validated the web app's certificate.");
-      return arn;
-    }
-    if (waiting === undefined && records.length === certificate.names.length) {
-      waiting = new Set();
-      for (const { name, value, status } of records) {
-        if (status === "live") continue;
-        waiting.add(name);
-        say(`Add a CNAME record at ${name} with the value ${value}, so ACM can validate the web app's certificate for ${hostsNamed}.`);
-      }
-      say("Waiting until ACM has validated the web app's certificate. You can stop, and run duva deploy again, which waits for the same one.");
-    }
+    waiting.add(name);
+    say(`Add a CNAME record at ${name} with the value ${value}, so ACM can validate the web app's certificate for ${hostsNamed}.`);
+  }
+  say("Waiting until ACM has validated the web app's certificate. You can stop, and run duva deploy again, which waits for the same one.");
+  for (let waited = 0; ; waited += certificateCheckEvery) {
     if (waited >= certificateWait) {
       throw new Error("ACM hasn't validated the web app's certificate in an hour. Add the records above to DNS, and run duva deploy again, which waits for the same certificate.");
     }
     await wait(certificateCheckEvery);
+    certificate = await pending();
+    for (const { name, status } of await validationRecords(dns, certificate)) if (status === "live" && waiting.delete(name)) say(`DNS has the record at ${name}.`);
+    if (certificate.status === "ISSUED") {
+      say("ACM has validated the web app's certificate.");
+      return arn;
+    }
   }
 }
 
+/** The records ACM validates the certificate by, each with whether DNS answers with it. */
+const validationRecords = (dns: Dns, { records }: Pick<Certificate, "records">) =>
+  Promise.all(records.map(({ name, value }) => checkRecord(dns, { purpose: "certificate" as const, type: "CNAME" as const, name, value })));
+
 /** The records the web app needs in DNS: those ACM validates its certificate by, and a CNAME to CloudFront for each host. */
 async function webRecords(aws: Aws, dns: Dns, arn: string, hosts: string[], distribution: string): Promise<DnsRecord<"certificate" | "web app">[]> {
-  const validation = (await aws.certificate(arn))?.records ?? [];
-  return Promise.all([
-    ...validation.map((record) => checkRecord(dns, { purpose: "certificate" as const, type: "CNAME" as const, ...record })),
-    ...hosts.map((host) => checkRecord(dns, { purpose: "web app" as const, type: "CNAME" as const, name: host, value: distribution })),
+  const [validation, cnames] = await Promise.all([
+    validationRecords(dns, (await aws.certificate(arn)) ?? { records: [] }),
+    Promise.all(hosts.map((host) => checkRecord(dns, { purpose: "web app" as const, type: "CNAME" as const, name: host, value: distribution }))),
   ]);
+  return [...validation, ...cnames];
 }
 
 /**

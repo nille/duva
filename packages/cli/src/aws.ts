@@ -206,8 +206,10 @@ export function realAws(region: string): Aws {
           status: Certificate?.Status ?? "PENDING_VALIDATION",
           ...(Certificate?.FailureReason !== undefined && { failure: Certificate.FailureReason }),
           // ACM names each record as a fully qualified name, ending in a dot.
-          records: (Certificate?.DomainValidationOptions ?? []).flatMap(({ ResourceRecord }) =>
-            ResourceRecord?.Name && ResourceRecord.Value ? [{ name: ResourceRecord.Name.replace(/\.$/, ""), value: ResourceRecord.Value.replace(/\.$/, "") }] : [],
+          records: (Certificate?.DomainValidationOptions ?? []).flatMap(({ DomainName, ResourceRecord }) =>
+            DomainName && ResourceRecord?.Name && ResourceRecord.Value
+              ? [{ host: DomainName, name: ResourceRecord.Name.replace(/\.$/, ""), value: ResourceRecord.Value.replace(/\.$/, "") }]
+              : [],
           ),
         };
       } catch (error) {

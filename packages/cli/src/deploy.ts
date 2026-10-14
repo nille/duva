@@ -37,7 +37,7 @@ export const deploy: Command = {
     }
 
     // Loaded here, so commands other than deploy start without the toolkit and the AWS SDK.
-    const [{ deployDuva }, { realAws }, { realDns }] = await Promise.all([
+    const [{ deployDuva }, { realAws }, { realZoneDns }] = await Promise.all([
       import("./deployment.ts"),
       import("./aws.ts"),
       import("@duva/api/dns-records"),
@@ -45,7 +45,7 @@ export const deploy: Command = {
     try {
       const { signIn, ...deployed } = await deployDuva({
         aws: realAws(region),
-        dns: realDns,
+        dns: realZoneDns,
         // stdout is kept for the command's JSON.
         say: (line) => void process.stderr.write(`${line}\n`),
         wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),

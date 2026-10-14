@@ -1,7 +1,8 @@
 // The DNS records a domain needs for SES, and whether DNS answers with them. duva deploy checks
-// the first domain's, and the API those of the domains admins add later (ADR-0018). Duva never
-// changes anyone's DNS.
-import { resolveCname, resolveMx, resolveTxt } from "node:dns/promises";
+// the first domain's, and the API those of the domains admins add later (ADR-0018). Deploy asks the
+// zone's own name servers, since it checks again, while it runs, records a human adds after a
+// resolver may have cached their absence (#180). Duva never changes anyone's DNS.
+import { Resolver, resolve4, resolveCname, resolveMx, resolveNs, resolveTxt } from "node:dns/promises";
 import { domainToASCII } from "node:url";
 
 export type RecordType = "MX" | "TXT" | "CNAME";
@@ -14,26 +15,91 @@ export interface Dns {
   resolve(type: RecordType, name: string): Promise<string[]>;
 }
 
-/** The system's resolver, through node:dns. */
-export const realDns: Dns = {
-  async resolve(type, name) {
-    try {
-      switch (type) {
-        case "MX":
-          return (await resolveMx(name)).map(({ priority, exchange }) => `${priority} ${exchange}`);
-        case "TXT":
-          return (await resolveTxt(name)).map((strings) => strings.join(""));
-        case "CNAME":
-          return await resolveCname(name);
-      }
-    } catch (error) {
-      // No such name, or no record of the type there: either way, no record.
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOTFOUND" || code === "ENODATA") return [];
-      throw error;
+/**
+ * DNS through the system's resolver, which may answer from its cache, and straight from the name
+ * servers a zone names, which have no cache to answer from.
+ */
+export interface ZoneDns {
+  /** Like Dns's, through the system's resolver, which also gives the host names of a zone's name servers, by NS. */
+  resolve(type: RecordType | "NS", name: string): Promise<string[]>;
+  /** Like Dns's, asking the name servers, by their host names. */
+  resolveAt(nameServers: string[], type: RecordType, name: string): Promise<string[]>;
+}
+
+/** The records of the type at the name, through the resolver. */
+async function lookUp(resolver: Pick<Resolver, "resolveCname" | "resolveMx" | "resolveNs" | "resolveTxt">, type: RecordType | "NS", name: string) {
+  try {
+    switch (type) {
+      case "MX":
+        return (await resolver.resolveMx(name)).map(({ priority, exchange }) => `${priority} ${exchange}`);
+      case "TXT":
+        return (await resolver.resolveTxt(name)).map((strings) => strings.join(""));
+      case "CNAME":
+        return await resolver.resolveCname(name);
+      case "NS":
+        return await resolver.resolveNs(name);
     }
+  } catch (error) {
+    // No such name, or no record of the type there: either way, no record.
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOTFOUND" || code === "ENODATA") return [];
+    throw error;
+  }
+}
+
+const systemResolver = { resolveCname, resolveMx, resolveNs, resolveTxt };
+
+/** The system's resolver and the name servers it gives, through node:dns. */
+export const realZoneDns: ZoneDns = {
+  resolve: (type, name) => lookUp(systemResolver, type, name),
+  async resolveAt(nameServers, type, name) {
+    // One address of each, asked once for 2 seconds, so a network that lets DNS reach only its own
+    // resolver costs seconds before deploy asks that resolver instead.
+    const addresses = (await Promise.all(nameServers.map(async (server) => (await resolve4(server).catch(() => []))[0]))).filter((address) => address !== undefined);
+    if (addresses.length === 0) throw new Error(`Couldn't find the addresses of ${name}'s name servers, ${nameServers.join(", ")}.`);
+    const resolver = new Resolver({ timeout: 2_000, tries: 1 });
+    resolver.setServers(addresses);
+    return lookUp(resolver, type, name);
   },
 };
+
+/** The system's resolver, through node:dns. */
+export const realDns: Dns = { resolve: realZoneDns.resolve };
+
+/**
+ * DNS as the name servers of each name's zone answer it. A resolver keeps an NXDOMAIN for as long as
+ * the zone's SOA says, up to hours, so a record added since stays missing through it (#180).
+ */
+export function authoritative(dns: ZoneDns): Dns {
+  // A name's zone is the nearest name at or above it with name servers of its own. No zone is at a
+  // CNAME's name, and asked for NS records there a resolver gives those of where it leads, as for a
+  // host that leads to a CloudFront distribution, whose domain is a zone.
+  const nameServers = async (name: string): Promise<string[]> => {
+    const servers = (await dns.resolve("CNAME", name)).length > 0 ? [] : await dns.resolve("NS", name);
+    const parent = name.slice(name.indexOf(".") + 1);
+    return servers.length > 0 || parent === name ? servers : nameServers(parent);
+  };
+  // A zone's name servers give what a CNAME leads to only within the zone, so a record that leads out
+  // of it, as _dmarc may to a DMARC service, is followed to the zone it leads to. Past a few, it's a loop.
+  const resolve = async (type: RecordType, name: string, hops = 0): Promise<string[]> => {
+    const servers = await nameServers(name);
+    if (servers.length === 0) throw new Error(`DNS gives no name servers for ${name}.`);
+    const found = await dns.resolveAt(servers, type, name);
+    if (found.length > 0 || type === "CNAME" || hops === 8) return found;
+    const [target] = await dns.resolveAt(servers, "CNAME", name);
+    return target === undefined ? [] : resolve(type, target, hops + 1);
+  };
+  return {
+    async resolve(type, name) {
+      try {
+        return await resolve(type, name);
+      } catch {
+        // Where a network lets DNS reach only its own resolver, that resolver answers, cache and all.
+        return dns.resolve(type, name);
+      }
+    },
+  };
+}
 
 export interface DnsRecord<Purpose extends string = "receiving" | "DKIM" | "MAIL FROM" | "DMARC"> {
   /** What the record is for: what SES needs it for, unless deploy checks it for the web app (#174). */
