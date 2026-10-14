@@ -2552,7 +2552,7 @@ export const operations = [
         "in": "query",
         "type": "string",
         "required": false,
-        "description": "Best first, or newest first. Without words or phrases, both are newest first."
+        "description": "How the threads are ordered, relevance for best first or newest for newest first. Without words or phrases, both are newest first."
       },
       {
         "name": "limit",
@@ -4336,7 +4336,7 @@ export const operations = [
         "in": "query",
         "type": "string",
         "required": false,
-        "description": "Best first, or newest first. Without words or phrases, both are newest first."
+        "description": "How the threads are ordered, relevance for best first or newest for newest first. Without words or phrases, both are newest first."
       },
       {
         "name": "limit",

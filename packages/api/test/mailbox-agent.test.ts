@@ -176,6 +176,21 @@ test("the mailbox agent answers from what its tools read in the mailbox, streami
   expect(requests[0]!.tools.find(({ name }) => name === "getThread")!.inputSchema.json).not.toHaveProperty("properties.mailbox");
 });
 
+test("the mailbox agent's search tool names the values its sort takes, and Duva refuses any other", async () => {
+  const { model, requests } = scripted(
+    () => [use("searchMailbox", { q: "report", sort: "best" })],
+    () => [use("searchMailbox", { q: "report", sort: "newest" })],
+  );
+  const { duva, ask, sonnetOnly } = await withMailbox({ model });
+  await sonnetOnly();
+  await duva.receive(fromGrace("The report", "Here is the quarterly report."), { to: ["linus@example.com"] });
+
+  const { events } = await ask("Is there anything about the report?");
+
+  expect(requests[0]!.tools.find(({ name }) => name === "searchMailbox")!.inputSchema.json).toHaveProperty("properties.sort.description", expect.stringMatching(/\brelevance\b.*\bnewest\b/));
+  expect(events!.flatMap((event) => (event.type === "action" ? [event.action.ok] : []))).toEqual([false, true]);
+});
+
 test("what a model writes between <thinking> and </thinking>, as Nova does, is neither streamed nor kept in the turn", async () => {
   const { model, requests } = scripted(
     () => [{ text: "<think" }, { text: "ing>I should search.</thi" }, { text: "nking>\n\n" }, use("searchMailbox", { q: "report" })],

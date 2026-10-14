@@ -9109,7 +9109,7 @@ export interface operations {
             query: {
                 /** @description What to search for: words, "quoted phrases", and the filters from: and to: (part of a name or address), subject: (a word or quoted phrase in the subject), label: (a label's name, quoted if it has spaces), has:attachment, is:unread, after: (received on or after the day) and before: (received before the day), with days as YYYY-MM-DD in UTC. Every phrase and filter must hold. */
                 q: string;
-                /** @description Best first, or newest first. Without words or phrases, both are newest first. */
+                /** @description How the threads are ordered, relevance for best first or newest for newest first. Without words or phrases, both are newest first. */
                 sort?: "relevance" | "newest";
                 /** @description How many threads a page lists at most. */
                 limit?: number;
@@ -10577,7 +10577,7 @@ export interface operations {
             query: {
                 /** @description What to search for, as searching one mailbox takes it: words, "quoted phrases", and the filters from:, to:, subject:, label:, has:attachment, is:unread, after: and before:. */
                 q: string;
-                /** @description Best first, or newest first. Without words or phrases, both are newest first. */
+                /** @description How the threads are ordered, relevance for best first or newest for newest first. Without words or phrases, both are newest first. */
                 sort?: "relevance" | "newest";
                 /** @description How many threads a page lists at most. */
                 limit?: number;

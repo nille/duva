@@ -20,7 +20,7 @@ export const measuredModels = {
       "labelTask": 1,
       "refusal": 1
     },
-    "costPerTask": 0.003932
+    "costPerTask": 0.003732
   },
   "anthropic.claude-sonnet-5-5": {
     "success": {

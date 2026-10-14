@@ -833,7 +833,7 @@ Finds the threads whose messages have every word in q, or mean what its words sa
 - `--mailbox` (required): The mailbox's ID. Give all for All mailboxes, every mailbox you can read.
 - `--q` (required): What to search for: words, "quoted phrases", and the filters from: and to: (part of a name or address), subject: (a word or quoted phrase in the subject), label: (a label's name, quoted if it has spaces), has:attachment, is:unread, after: (received on or after the day) and before: (received before the day), with days as YYYY-MM-DD in UTC. Every phrase and filter must hold.
 
-- `--sort`: Best first, or newest first. Without words or phrases, both are newest first.
+- `--sort`: How the threads are ordered, relevance for best first or newest for newest first. Without words or phrases, both are newest first.
 - `--limit`: How many threads a page lists at most.
 - `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
 

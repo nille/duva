@@ -32,13 +32,12 @@ test("the defaults grade and hand over each task's first run as when it was reco
   });
 });
 
-test("the defaults grade each recorded run of a lookup on the web as when it was recorded", { timeout: 120_000 }, async () => {
+test("the defaults look up on the web what the mail doesn't say, in each recorded run", { timeout: 120_000 }, async () => {
   const runs = await Promise.all(lookups.flatMap((task) => Array.from({ length: defaults.runs }, (_, attempt) => runTask(defaults, task, attempt + 1))));
 
-  // Haiku 5.5 read the booking, found no terminal in it, and answered without searching the web (#175).
   expect(runs.map(({ task, passed }) => [task, passed])).toEqual([
-    ["which terminal the Lisbon flight leaves from", false],
-    ["which terminal the Lisbon flight leaves from", false],
+    ["which terminal the Lisbon flight leaves from", true],
+    ["which terminal the Lisbon flight leaves from", true],
   ]);
 });
 
@@ -87,7 +86,7 @@ const ROUTING = {
     "Nova routed": { answerCheck: 6, decided: 12, none: 23, stepBudget: 4 },
     "Claude Haiku 4.5 with Sonnet 5.5": { none: 24, writing: 6 },
     "GPT-6 Luna with Sol": { answerCheck: 2, none: 22, writing: 6 },
-    Defaults: { failedCalls: 1, none: 23, writing: 6 },
+    Defaults: { none: 24, writing: 6 },
   },
   decider: 0.45,
 };
@@ -166,13 +165,13 @@ const TABLE = {
     month: 2.18,
   },
   Defaults: {
-    all: { passed: 1, failedCalls: 0.4, turns: 3.2, p50: 3.9, p95: 12.2, cents: 2.41, handedOver: 0.23 },
-    conversation: { passed: 1, failedCalls: 0.3, turns: 2.2, p50: 2.6, p95: 8.3, cents: 1.07, handedOver: 0.1 },
-    drafting: { passed: 1, failedCalls: 1, turns: 5.8, p50: 7.8, p95: 12.2, cents: 8.47, handedOver: 1 },
-    triage: { passed: 1, failedCalls: 0, turns: 3.8, p50: 6.7, p95: 9.9, cents: 0.57, handedOver: 0 },
-    "label task": { passed: 1, failedCalls: 0, turns: 2, p50: 3.2, p95: 3.9, cents: 0.28, handedOver: 0 },
-    refusal: { passed: 1, failedCalls: 1.3, turns: 4.8, p50: 6.8, p95: 13.8, cents: 5.78, handedOver: 0.5 },
-    month: 9.15,
+    all: { passed: 1, failedCalls: 0.1, turns: 3, p50: 4.8, p95: 10.8, cents: 1.98, handedOver: 0.2 },
+    conversation: { passed: 1, failedCalls: 0, turns: 2.1, p50: 2.8, p95: 5.6, cents: 0.28, handedOver: 0 },
+    drafting: { passed: 1, failedCalls: 0, turns: 5.5, p50: 8.1, p95: 12, cents: 7.96, handedOver: 1 },
+    triage: { passed: 1, failedCalls: 0, turns: 3.5, p50: 6.4, p95: 8.4, cents: 0.55, handedOver: 0 },
+    "label task": { passed: 1, failedCalls: 0, turns: 2, p50: 3.5, p95: 6.7, cents: 0.29, handedOver: 0 },
+    refusal: { passed: 1, failedCalls: 1, turns: 4.3, p50: 6.2, p95: 10.8, cents: 5.08, handedOver: 0.5 },
+    month: 6.45,
   },
   "GPT-6 Luna": {
     all: { passed: 1, failedCalls: 0, turns: 2.6, p50: 4, p95: 10.6, cents: 0.05, handedOver: 0 },
@@ -373,12 +372,12 @@ const TABLE = {
     month: 12.01,
   },
   "Claude Haiku 5.5": {
-    all: { passed: 1, failedCalls: 0.3, turns: 2.8, p50: 3.9, p95: 9.1, cents: 0.39, handedOver: 0 },
-    conversation: { passed: 1, failedCalls: 0.2, turns: 2.3, p50: 3.1, p95: 5.5, cents: 0.3, handedOver: 0 },
-    drafting: { passed: 1, failedCalls: 0.5, turns: 4, p50: 5.9, p95: 8.2, cents: 0.53, handedOver: 0 },
-    triage: { passed: 1, failedCalls: 0, turns: 4, p50: 8, p95: 9.1, cents: 0.62, handedOver: 0 },
-    "label task": { passed: 1, failedCalls: 0, turns: 1.9, p50: 3.3, p95: 4.2, cents: 0.26, handedOver: 0 },
-    refusal: { passed: 1, failedCalls: 1.3, turns: 3.8, p50: 7.3, p95: 9.8, cents: 0.53, handedOver: 0 },
-    month: 2.05,
+    all: { passed: 1, failedCalls: 0.2, turns: 2.7, p50: 3.5, p95: 8.1, cents: 0.37, handedOver: 0 },
+    conversation: { passed: 1, failedCalls: 0, turns: 2.1, p50: 2.6, p95: 4.4, cents: 0.27, handedOver: 0 },
+    drafting: { passed: 1, failedCalls: 0.3, turns: 3.5, p50: 4.8, p95: 7.2, cents: 0.48, handedOver: 0 },
+    triage: { passed: 1, failedCalls: 0.3, turns: 3.8, p50: 5.8, p95: 9.8, cents: 0.57, handedOver: 0 },
+    "label task": { passed: 1, failedCalls: 0, turns: 1.9, p50: 3.3, p95: 4.8, cents: 0.27, handedOver: 0 },
+    refusal: { passed: 1, failedCalls: 1, turns: 3.8, p50: 7.3, p95: 8, cents: 0.55, handedOver: 0 },
+    month: 1.91,
   },
 };

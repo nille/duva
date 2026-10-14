@@ -111,6 +111,17 @@ test("web search is on by default, and Status says it searches from Ireland for 
   expect((await us.client.GET("/status")).data).toMatchObject({ region: "us-east-2", webSearchRegion: "us-east-1" });
 });
 
+test("while Coo may search the web, it is told to search it for what the mail doesn't say and the web could, before it sends its human to look it up", async () => {
+  const { model, coo } = scripted([]);
+  const { linus, ask } = await withMailbox({ model });
+
+  await ask("Which terminal does my flight leave from?");
+  await linus.PATCH("/preferences", { body: { cooWebSearch: "off" } });
+  await ask("Which terminal does my flight leave from?");
+
+  expect(coo().map(({ system }) => /the mail doesn't say and the web could.*search the web with searchWeb before you answer/s.test(system))).toEqual([true, false]);
+});
+
 test("Coo has no web search once an admin turns it off for the organization, or its human for their own Coo, and only admins turn the organization's off", async () => {
   const { model, coo } = scripted([]);
   const { ada, linus, ask } = await withMailbox({ model });
