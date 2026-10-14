@@ -928,8 +928,11 @@ function handler(event) {
       }),
     );
     handler.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:DeleteBrowserProfile"], resources: [browserProfiles] }));
-    for (const listing of [agentRuntime, handler]) listing.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:ListBrowserProfiles"], resources: [allProfiles] }));
-    handler.addEnvironment(environmentVariables.browser, Fn.conditionIf(agentsHere.logicalId, browser.browserId, "").toString());
+    for (const listing of [agentRuntime, handler, setup]) listing.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:ListBrowserProfiles"], resources: [allProfiles] }));
+    // Setup gives each profile the tags the runtime creates one with, so those from before the
+    // project's tag have it too (#176).
+    for (const reader of [handler, setup]) reader.addEnvironment(environmentVariables.browser, Fn.conditionIf(agentsHere.logicalId, browser.browserId, "").toString());
+    setup.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:TagResource"], resources: [browserProfiles], conditions: browserProfileTagged }));
     agentRuntime.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-agentcore:InvokeGateway"], resources: [searchGateway.getAttString("Arn")] }));
     const searching = [searchRole, gatewayMaker, this.node.findChild("WebSearchGatewayLogs"), searchGateway];
     // As an aspect, so it reaches what CDK adds as it synthesizes too, as the policy the runtime's role outgrows.

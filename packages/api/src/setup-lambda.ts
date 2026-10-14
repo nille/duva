@@ -6,6 +6,7 @@ import { LambdaClient } from "@aws-sdk/client-lambda";
 import { SESClient } from "@aws-sdk/client-ses";
 import { SESv2Client } from "@aws-sdk/client-sesv2";
 import { SQSClient } from "@aws-sdk/client-sqs";
+import { agentCoreBrowserProfiles } from "./browser-profiles.ts";
 import { required } from "./environment.ts";
 import { cognitoHumans, cognitoSignInSender } from "./user-pool.ts";
 import { sesOutbound } from "./outbound.ts";
@@ -74,6 +75,9 @@ export const handler = async (): Promise<SetupAnswer> => {
   await carryOverModelChoices(table);
   // An organization from before GPT-6 Luna and Sol became the defaults keeps the models it had, once (#158).
   await keepEarlierModels(table);
+  // Each human's browser profile gets the tags the runtime creates one with, so those from before
+  // everything Duva makes was tagged as the project's are tagged so too (#176).
+  await agentCoreBrowserProfiles(process.env[environmentVariables.browser] ?? "").tag();
   // Decisions on approvals from before the approval log are listed in it, once.
   await listEarlierDecisions(table);
   // Each mailbox's index is backfilled with the mail it has, or its backfill finished if one stopped.

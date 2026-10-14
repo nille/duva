@@ -36,7 +36,7 @@ import { createCooMail } from "../src/coo-mail.ts";
 import { eraseAgentsMailboxes } from "../src/removal.ts";
 import { createInbound } from "../src/inbound.ts";
 import { createFeeder, createIndexer, type IndexQueue, indexMailboxes, type QueuedTask } from "../src/indexing.ts";
-import { alertMailFilter, conversationPath, mcpRoutes, tokenHeader, feederFilter, taskGiverFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, type SetupAnswer, tableKey, tableStreamView } from "../src/infrastructure.ts";
+import { alertMailFilter, browserProfileTag, browserProfileTags, conversationPath, mcpRoutes, tokenHeader, feederFilter, taskGiverFilter, hostedLogoHeaders, hostedLogosPath, senderFilter, senderRetries, type SetupAnswer, tableKey, tableStreamView } from "../src/infrastructure.ts";
 import { lanceSearch } from "../src/lancedb-search.ts";
 import { createSearcher } from "../src/searching.ts";
 import type { Table } from "../src/deployment.ts";
@@ -53,7 +53,7 @@ import { createPaymentRunner } from "../src/payment-runs.ts";
 import { createTaskGiver, createTaskRunner, type TaskRef, type TaskRunner, type TaskRunnerEvent } from "../src/tasks.ts";
 import { createUnsubscribeRunner } from "../src/unsubscribe-runs.ts";
 import { standInBrowser } from "./browser.ts";
-import { profileName } from "../src/browser-profiles.ts";
+import { type BrowserProfiles, profileName } from "../src/browser-profiles.ts";
 import { createMcp } from "../src/mcp.ts";
 import { giveMailboxAgents, mailboxAgentName, mailboxAgentSettings, turnPrefix } from "../src/mailbox-agents.ts";
 import { giveFirstAdminMailbox } from "../src/mailboxes.ts";
@@ -167,6 +167,12 @@ export interface DuvaOptions {
    * conversation with each (ADR-0033).
    */
   beforeOneCoo?: boolean;
+  /**
+   * Whether the deployment runs a version from before everything Duva makes was tagged as the
+   * project's (#176) until setUp() deploys this one, so the browser profiles its Coos make until
+   * then are tagged only as browser profiles.
+   */
+  beforeProjectTag?: boolean;
   /**
    * The model settings admins chose on a version from before each human picked their mailbox
    * agent's models from measured ones (ADR-0035), stored as that version stored them, until
@@ -293,8 +299,8 @@ export interface Duva {
   searchObjects(): string[];
   /** The queries Web Search on AgentCore got from the mailbox agents, in order. */
   webSearches(): string[];
-  /** The browser profiles AgentCore Browser keeps, by name, which the humans' Coos browse in. */
-  browserProfiles(): string[];
+  /** The browser profiles AgentCore Browser keeps, by name, with their tags, which the humans' Coos browse in. */
+  browserProfiles(): { name: string; tags: Record<string, string> }[];
   /**
    * Runs the eraser as its daily schedule does, at the time. With `s3DeletesFail`, S3 refuses to
    * delete anything during the run, which then fails, as a run that stops partway does.
@@ -387,6 +393,7 @@ export async function startDuva({
   beforeCoo = false,
   beforeCooAddress = false,
   beforeOneCoo = false,
+  beforeProjectTag = false,
   earlierModelSettings,
   beforeLunaAndSol = false,
   model = standInModel,
@@ -416,8 +423,18 @@ export async function startDuva({
   const dns = memoryDns();
   const internet = standInInternet();
   // The mailbox agents browse in AgentCore Browser, a stand-in here over the stand-in internet,
-  // with the humans' profiles, which the API deletes.
-  const browser = standInBrowser(internet.network);
+  // with the humans' profiles, which the runtime creates tagged, setup tags, and the API deletes.
+  let projectTagDeployed = !beforeProjectTag;
+  const browser = standInBrowser(internet.network, () => (projectTagDeployed ? browserProfileTags : { [browserProfileTag.Key]: browserProfileTag.Value }));
+  const browserProfiles: BrowserProfiles = {
+    async forget(human) {
+      browser.profiles.delete(profileName(human));
+      browser.tags.delete(profileName(human));
+    },
+    async tag() {
+      for (const name of browser.profiles.keys()) browser.tags.set(name, browserProfileTags);
+    },
+  };
   const identities = sesIdentities({ region, dns, verified: [domain], others: othersIdentities, configurationSet: "duva-sending" });
   const signInSender = memorySignInSender(domain, identities.verified);
   // SES's events invoke the feedback Lambda, which changes SES's suppression list, so the two are tied once both exist.
@@ -579,7 +596,7 @@ export async function startDuva({
       tasks: taskRunner,
       embedder: titan,
       suggester,
-      browserProfiles: { forget: async (human) => void browser.profiles.delete(profileName(human)) },
+      browserProfiles,
       secretKeys: memorySecretKeys(),
     }),
     // Cognito's verifier takes only the web app's and the CLI's app clients, which share the stand-in's one.
@@ -792,7 +809,7 @@ export async function startDuva({
     },
     webServer: (hostname, options) => internet.webServer(hostname, options),
     webSearches: () => [...queries],
-    browserProfiles: () => [...browser.profiles.keys()],
+    browserProfiles: () => [...browser.profiles.keys()].map((name) => ({ name, tags: browser.tags.get(name)! })),
     download: (url) => ([inProcess, ...hostedAt].some((at) => url.startsWith(`${at}/`)) ? api(new Request(url)) : fetch(url)),
     moveWebApp(host) {
       webUrl = `https://${host}`;
@@ -820,6 +837,8 @@ export async function startDuva({
       await syncRecipients(table, receiving);
       await carryOverModelChoices(table);
       await keepEarlierModels(table);
+      projectTagDeployed = true;
+      await browserProfiles.tag();
       approvalLogDeployed = true;
       await listEarlierDecisions(table);
       // The feeder starts with this version, and reads only what is written from then on.

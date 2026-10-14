@@ -39,6 +39,7 @@
     "./translation": "./src/translation.ts",
     "./receiving": "./src/receiving.ts",
     "./suppression": "./src/suppression.ts",
+    "./browser-profiles": "./src/browser-profiles.ts",
     "./harness": "./test/harness.ts",
     "./mcp-sign-in": "./test/mcp-sign-in.ts"
   },

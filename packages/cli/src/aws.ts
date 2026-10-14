@@ -25,7 +25,8 @@ import {
   ResourceNotFoundException,
 } from "@aws-sdk/client-acm";
 import { CloudFormationClient, DescribeStacksCommand, paginateListStackResources } from "@aws-sdk/client-cloudformation";
-import { CloudWatchLogsClient, ResourceNotFoundException as NoLogGroup, TagResourceCommand } from "@aws-sdk/client-cloudwatch-logs";
+import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand, GetAgentRuntimeEndpointCommand, TagResourceCommand } from "@aws-sdk/client-bedrock-agentcore-control";
+import { CloudWatchLogsClient, ResourceNotFoundException as NoLogGroup, TagResourceCommand as TagLogGroupCommand } from "@aws-sdk/client-cloudwatch-logs";
 import {
   CognitoIdentityProviderClient,
   DeleteUserPoolCommand,
@@ -85,7 +86,7 @@ export function realAws(region: string): Aws {
       const bundle = await unpackBundle();
       try {
         const deployed = await deployBundle(bundle, region, parameters);
-        await tagRuntimeLogs(deployed.outputs[stackOutputs.agentRuntime] ?? "");
+        await tagRuntimeResources(deployed.outputs[stackOutputs.agentRuntime] ?? "");
         return deployed;
       } finally {
         await rm(bundle, { recursive: true, force: true });
@@ -318,17 +319,28 @@ async function deployBundle(bundle: string, region: string, { domain, admin, sig
 }
 
 /**
- * Tags the log group of the mailbox agents' runtime, given its ARN, as the project's. AgentCore
- * creates it with the runtime, so the stack can't, and gives it none of the runtime's tags
- * (docs/aws.md). Where AgentCore isn't, the stack has no runtime and gives its ARN as empty.
+ * Tags what AgentCore makes with the mailbox agents' runtime, given its ARN, as the project's, as
+ * the stack can't (docs/aws.md). AgentCore creates the runtime's log group with it, and gives it
+ * none of the runtime's tags. Its DEFAULT endpoint and workload identity take the runtime's tags
+ * only as they are created, so those from before the runtime had the project's lack it. Where
+ * AgentCore isn't, the stack has no runtime and gives its ARN as empty.
  */
-async function tagRuntimeLogs(runtime: string) {
+async function tagRuntimeResources(runtime: string) {
   if (runtime === "") return;
   const [, partition, , region, account, resource] = runtime.split(":");
-  const resourceArn = `arn:${partition}:logs:${region}:${account}:log-group:/aws/bedrock-agentcore/runtimes/${resource!.split("/")[1]}-DEFAULT`;
-  await new CloudWatchLogsClient({ region }).send(new TagResourceCommand({ resourceArn, tags: { [projectTag.Key]: projectTag.Value } })).catch((error: unknown) => {
+  const agentRuntimeId = resource!.split("/")[1]!;
+  const endpointName = "DEFAULT";
+  const tags = { [projectTag.Key]: projectTag.Value };
+  const logs = `arn:${partition}:logs:${region}:${account}:log-group:/aws/bedrock-agentcore/runtimes/${agentRuntimeId}-${endpointName}`;
+  await new CloudWatchLogsClient({ region }).send(new TagLogGroupCommand({ resourceArn: logs, tags })).catch((error: unknown) => {
     if (!(error instanceof NoLogGroup)) throw error;
   });
+  const control = new BedrockAgentCoreControlClient({ region });
+  const { workloadIdentityDetails } = await control.send(new GetAgentRuntimeCommand({ agentRuntimeId }));
+  const { agentRuntimeEndpointArn } = await control.send(new GetAgentRuntimeEndpointCommand({ agentRuntimeId, endpointName }));
+  for (const resourceArn of [agentRuntimeEndpointArn, workloadIdentityDetails?.workloadIdentityArn]) {
+    if (resourceArn !== undefined) await control.send(new TagResourceCommand({ resourceArn, tags }));
+  }
 }
 
 /** Keeps stdout for the command's JSON: the toolkit's progress, results included, goes to stderr. */

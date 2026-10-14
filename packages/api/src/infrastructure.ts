@@ -41,10 +41,13 @@ export const projectTagged = {
  */
 export const browserProfileTag = { Key: "duva", Value: "browser-profile" } as const;
 
-/** The IAM condition that allows creating, and tagging, only a profile tagged so and as the project's, and with no other tag. */
+/** The tags of every human's browser profile: as a browser profile, and as the project's. */
+export const browserProfileTags: Record<string, string> = { [browserProfileTag.Key]: browserProfileTag.Value, [projectTag.Key]: projectTag.Value };
+
+/** The IAM condition that allows creating, and tagging, only a profile with those tags and no other. */
 export const browserProfileTagged = {
-  StringEquals: { [`aws:RequestTag/${browserProfileTag.Key}`]: browserProfileTag.Value, [`aws:RequestTag/${projectTag.Key}`]: projectTag.Value },
-  "ForAllValues:StringEquals": { "aws:TagKeys": [browserProfileTag.Key, projectTag.Key] },
+  StringEquals: Object.fromEntries(Object.entries(browserProfileTags).map(([key, value]) => [`aws:RequestTag/${key}`, value])),
+  "ForAllValues:StringEquals": { "aws:TagKeys": Object.keys(browserProfileTags) },
 };
 
 /** The environment variables the CDK app gives the API's Lambdas. Each Lambda gets those it reads. */

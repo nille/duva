@@ -1268,7 +1268,7 @@ test("the browser's managed Chrome policy, from a file in the deploy's assets, r
   expect(JSON.parse(readFileSync(join(outdir, file!.source.path), "utf8"))).toEqual({ DownloadRestrictions: 3, PasswordManagerEnabled: false, AutofillCreditCardEnabled: false, AutofillAddressEnabled: false });
 });
 
-test("each human's browser profile is Duva's, which the runtime creates tagged, starts sessions with and saves, and the API only deletes", () => {
+test("each human's browser profile is Duva's, which the runtime creates tagged, starts sessions with and saves, setup tags as the runtime does, and the API only deletes", () => {
   type Statement = { Action: string | string[]; Resource: unknown; Condition?: unknown };
   const runtime = resources.find(([, { Type }]) => Type === "AWS::BedrockAgentCore::Runtime")!;
   const role = (runtime[1].Properties?.RoleArn as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0]!;
@@ -1305,6 +1305,13 @@ test("each human's browser profile is Duva's, which the runtime creates tagged, 
     { action: "bedrock-agentcore:ListBrowserProfiles", profiles: ":browser-profile/*", condition: undefined },
   ]);
   expect(actions("ApiHandler", "bedrock-agentcore").sort()).toEqual(["bedrock-agentcore:DeleteBrowserProfile", "bedrock-agentcore:ListBrowserProfiles"]);
+  // Setup tags the profiles from before they were tagged as the project's, as the runtime tags a new one, where the stack has the browser.
+  expect(onProfiles(statements("SetupHandler"))).toEqual([
+    { action: "bedrock-agentcore:ListBrowserProfiles", profiles: ":browser-profile/*", condition: undefined },
+    { action: "bedrock-agentcore:TagResource", profiles: ":browser-profile/duva_*", condition: tagged },
+  ]);
+  expect(actions("SetupHandler", "bedrock-agentcore").sort()).toEqual(["bedrock-agentcore:ListBrowserProfiles", "bedrock-agentcore:TagResource"]);
+  expect(lambda("SetupHandler")[1].Properties?.Environment?.Variables?.[environmentVariables.browser]).toEqual({ "Fn::If": ["MailboxAgentsCondition", { "Fn::GetAtt": [browserId, "BrowserId"] }, ""] });
 });
 
 test("the mailbox agents search the web through a gateway the stack's custom resource makes, which only CloudFormation invokes, and only their runtime may call", () => {

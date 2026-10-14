@@ -2,7 +2,8 @@
 // as the page script does in a real one, its text and its numbered elements, and fills in and
 // submits its forms as a browser would, without scripts. A session with a profile keeps cookies,
 // by host, and saves them back to the profile as it ends, as AgentCore's profiles do; a session
-// without one starts with none. It refuses every download, as the browser's policy does, staying
+// without one starts with none. The first session with a profile creates it, with the tags the
+// deployed version's runtime gives one. It refuses every download, as the browser's policy does, staying
 // on its page. So a test's web server sees what the agent sent, and answers it with the page it
 // leads to.
 import { Parser } from "htmlparser2";
@@ -40,13 +41,17 @@ const copied = (cookies: Cookies): Cookies => new Map([...cookies].map(([host, e
 
 /**
  * Sessions of the stand-in browser, the URLs each opened, in order, and its profiles by name:
- * those created, and what each saved.
+ * those created, what each saved, and each one's tags, those `tagsOfNew` gives a new one.
  */
-export function standInBrowser(network: Network) {
+export function standInBrowser(network: Network, tagsOfNew: () => Record<string, string>) {
   const visited: string[] = [];
   const profiles = new Map<string, Cookies>();
+  const tags = new Map<string, Record<string, string>>();
   const start = async ({ profile }: { profile?: string } = {}): Promise<BrowserSession> => {
-    if (profile !== undefined && !profiles.has(profile)) profiles.set(profile, new Map());
+    if (profile !== undefined && !profiles.has(profile)) {
+      profiles.set(profile, new Map());
+      tags.set(profile, tagsOfNew());
+    }
     const cookies = copied(profile === undefined ? new Map() : profiles.get(profile)!);
     let page: Page | undefined;
     const go = async (url: URL, method = "GET", body?: string): Promise<PageView> => {
@@ -150,7 +155,7 @@ export function standInBrowser(network: Network) {
       return go(action);
     }
   };
-  return { start, visited, profiles };
+  return { start, visited, profiles, tags };
 }
 
 const viewOf = ({ url, title, text, controls, frames }: Page): PageView => ({

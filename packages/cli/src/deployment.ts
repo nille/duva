@@ -54,8 +54,9 @@ export interface Aws {
   duvaStack(): Promise<(Partial<StackParameters> & { outputs: StackOutputs }) | undefined>;
   /**
    * Deploys the Duva stack. Where CDK isn't bootstrapped in the region, it bootstraps it first, with
-   * the bootstrap stack tagged project=duva, and it tags the log group AgentCore makes with the
-   * mailbox agents' runtime. Deploying what's already deployed changes nothing.
+   * the bootstrap stack tagged project=duva, and it tags what AgentCore makes with the mailbox
+   * agents' runtime: its log group, DEFAULT endpoint and workload identity. Deploying what's already
+   * deployed changes nothing.
    */
   deployStack(parameters: StackParameters): Promise<{ account: string; outputs: StackOutputs }>;
   /**

@@ -50,7 +50,7 @@ import { paginateGetResources, ResourceGroupsTaggingAPIClient } from "@aws-sdk/c
 import { GetQueueAttributesCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { GetBucketCorsCommand, GetBucketLifecycleConfigurationCommand, GetBucketVersioningCommand, GetPublicAccessBlockCommand, paginateListObjectsV2, S3Client } from "@aws-sdk/client-s3";
 import { indexedMailboxes, uncompactedSince } from "@duva/api/indexing";
-import { alertMailFilter, authorizationServerPath, browserProfileTag, browserProfileTagged, projectTag, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
+import { alertMailFilter, authorizationServerPath, browserProfileTagged, projectTag, conversationPath, taskGiverFilter, mcpAuthorizePath, mcpPath, mcpRegistrationPath, mcpTokenPath, protectedResourcePaths, tokenHeader, dropMetric, dropReasons, environmentVariables, hostedLogoHeaders, hostedLogosPath, inboundPrefix, receiptRuleNumber, recipientsPerRule, senderFilter, signInFrom } from "@duva/api/infrastructure";
 import { rulesTake } from "@duva/api/receiving";
 import { callOf, defaultHarderModel, defaultMailboxAgentModel, inferenceProfileId } from "@duva/api/agent-models";
 import { webSearchRegion } from "@duva/api/web-search";
@@ -60,7 +60,16 @@ import { mailboxAgentsLeft } from "@duva/api/mailbox-agents";
 import { cooAddressesLeft } from "@duva/api/coo-address";
 import { tasksWorkingSince } from "@duva/api/tasks";
 import { agentsMailboxes } from "@duva/api/removal";
-import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand, GetBrowserCommand, GetGatewayCommand, ListGatewayTargetsCommand, ListTagsForResourceCommand } from "@aws-sdk/client-bedrock-agentcore-control";
+import {
+  BedrockAgentCoreControlClient,
+  GetAgentRuntimeCommand,
+  GetBrowserCommand,
+  GetGatewayCommand,
+  ListGatewayTargetsCommand,
+  ListTagsForResourceCommand,
+  paginateListBrowserProfiles,
+} from "@aws-sdk/client-bedrock-agentcore-control";
+import { isHumansProfile } from "@duva/api/browser-profiles";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createHash } from "node:crypto";
 import { sesSuppressionList } from "@duva/api/suppression";
@@ -941,20 +950,31 @@ await check("the API lets the web app call it with a session", async () => {
 });
 // Resource Groups Tagging finds what CloudFormation made by the tags CloudFormation gives it, which
 // it gives only some types, so the distribution, the queues, the key, the roles and the table aren't
-// among them (docs/aws.md). It lists only what has a tag, so the domains' identities the API made,
-// and the runtime's log group, are read one by one (#176).
+// among them. It keeps listing a resource after it's deleted, with the tags it had, so the check
+// counts only what is tagged with the logical ID of a resource the stack still has (docs/aws.md).
+// It lists only what has a tag, so the domains' identities the API made, and the runtime's log
+// group, are read one by one, and the humans' browser profiles are read from AgentCore, which says
+// which are being deleted (#176).
 await check("the stack, each of its resources Resource Groups Tagging finds, each human's browser profile, each of the organization's domains' identities and the runtime's log group carry project=duva (#176)", async () => {
   const stackId = stack!.StackId!;
   const untagged = new Set<string>();
   if (!projectTagged(stack!.Tags)) untagged.add(`the stack ${stackId}`);
-  const tagging = new ResourceGroupsTaggingAPIClient({ region });
-  const find = async (TagFilters: { Key: string; Values: string[] }[]) => {
-    for await (const { ResourceTagMappingList = [] } of paginateGetResources({ client: tagging }, { TagFilters })) {
-      for (const { ResourceARN, Tags } of ResourceTagMappingList) if (!projectTagged(Tags)) untagged.add(ResourceARN!);
+  const logicalIds = new Set<string>();
+  for await (const { StackResourceSummaries = [] } of paginateListStackResources({ client: cloudFormation }, { StackName: stackName })) {
+    for (const { LogicalResourceId } of StackResourceSummaries) logicalIds.add(LogicalResourceId!);
+  }
+  for await (const { ResourceTagMappingList = [] } of paginateGetResources({ client: new ResourceGroupsTaggingAPIClient({ region }) }, { TagFilters: [{ Key: "aws:cloudformation:stack-id", Values: [stackId] }] })) {
+    for (const { ResourceARN, Tags = [] } of ResourceTagMappingList) {
+      const stillHas = logicalIds.has(Tags.find(({ Key }) => Key === "aws:cloudformation:logical-id")?.Value ?? "");
+      if (stillHas && !projectTagged(Tags)) untagged.add(ResourceARN!);
     }
-  };
-  await find([{ Key: "aws:cloudformation:stack-id", Values: [stackId] }]);
-  await find([{ Key: browserProfileTag.Key, Values: [browserProfileTag.Value] }]);
+  }
+  const control = new BedrockAgentCoreControlClient({ region });
+  for await (const { profileSummaries = [] } of paginateListBrowserProfiles({ client: control }, {})) {
+    for (const profile of profileSummaries.filter(isHumansProfile)) {
+      if (!projectTagged((await control.send(new ListTagsForResourceCommand({ resourceArn: profile.profileArn }))).tags)) untagged.add(profile.profileArn!);
+    }
+  }
   const table = await stackTable();
   if (table === undefined) return "the stack has no table";
   const sesv2 = new SESv2Client({ region });

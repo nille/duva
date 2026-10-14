@@ -348,6 +348,21 @@ test("a label's task may browse, and what it did shows in the task and in its ac
   expect((await events(ada)).find(({ type }) => type === "taskEnded")!.summary).toBe("Coo finished a task.");
 });
 
+test("a Coo's browser profile from before Duva tagged what it makes as the project's is tagged so once setup has run, and Coo stays logged in to the site", async () => {
+  const { model } = scripted({ coo: [...changesTheAddress, ...changesTheAddress], page: [...signsInWithACode, ...savesTheAddress, ...savesTheAddress] });
+  const { duva, ask, requests } = await withShop({ model, beforeProjectTag: true });
+  await ask("Change my delivery address at Example Shop to Storgatan 1.");
+  const before = duva.browserProfiles();
+
+  await duva.setUp({ admin: "ada@example.org" });
+  await ask("Change it again, to Storgatan 1.");
+
+  expect(before.map(({ tags }) => tags)).toEqual([{ duva: "browser-profile" }]);
+  expect(duva.browserProfiles()).toEqual([{ name: before[0]!.name, tags: { duva: "browser-profile", project: "duva" } }]);
+  // The second run was still signed in.
+  expect(posts(requests).at(-1)).toMatchObject({ path: "/address", cookie: "session=s3cret" });
+});
+
 test("removing a human deletes their Coo's browser profile, and only a human signs their Coo out", async () => {
   const { model } = scripted({ coo: changesTheAddress, page: [...signsInWithACode, ...savesTheAddress] });
   const { duva, ada, ask, params, linusId } = await withShop({ model });
