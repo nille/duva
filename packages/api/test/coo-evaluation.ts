@@ -31,7 +31,10 @@ export interface Setup {
 }
 
 const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
+const haikuFive = "anthropic.claude-haiku-5-5";
 const sonnet = "anthropic.claude-sonnet-5-5";
+const luna = "openai.gpt-6-luna";
+const sol = "openai.gpt-6-sol";
 
 /** One model for every job, so nothing is routed or handed over. */
 const alone = (name: string, model: MailboxAgentModel, runs = 3): Setup => ({
@@ -72,9 +75,10 @@ const listed = (
  * The setups #132 measures: each model alone, called where production would call it, routing with
  * Nova 2 Lite as the everyday model and the decider on, as first built, and the defaults Nicklas
  * chose from those numbers, Claude Haiku 4.5 with Sonnet 5.5 for the harder work and the decider
- * off. Claude runs each task twice, to keep the recording's cost down. Then the models #150 measures,
- * and the defaults Duva ships, GPT-6 Luna with Sol for the harder work since Nicklas chose them from
- * #150's numbers (#158).
+ * off. Claude runs each task twice, to keep the recording's cost down. Then GPT-6 Luna with Sol for
+ * the harder work, the defaults Nicklas chose from #150's numbers (#158), and the defaults Duva ships,
+ * Claude Haiku 5.5 with Sonnet 5.5 for the harder work since #175. Then the models #150 measures, and
+ * Haiku 5.5 alone (#175).
  */
 export const setups: Setup[] = [
   alone("Nova Lite", "amazon.nova-lite-v1:0"),
@@ -98,6 +102,11 @@ export const setups: Setup[] = [
     runs: 2,
   },
   {
+    name: "GPT-6 Luna with Sol",
+    settings: { mailboxAgentAllowedModels: [luna, sol], mailboxAgentModel: luna, mailboxAgentHarderModel: sol, mailboxAgentDecider: false },
+    runs: 2,
+  },
+  {
     name: "Defaults",
     settings: {
       mailboxAgentAllowedModels: defaultSettings.mailboxAgentAllowedModels,
@@ -109,6 +118,7 @@ export const setups: Setup[] = [
   },
   ...listed.map(([name, model]) => alone(name, model, 2)),
   ...listed.map(([name, model]) => harder(name, model)),
+  alone("Claude Haiku 5.5", haikuFive, 2),
 ];
 
 /** A message in the evaluation's mailbox, its key the local part of its Message-ID. */

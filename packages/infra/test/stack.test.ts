@@ -1368,7 +1368,7 @@ test("the mailbox agents may call only the models admins can choose, through the
     .filter(([, { Properties }]) => (Properties?.Roles ?? []).some((ref: { Ref?: string }) => JSON.stringify(ref.Ref) === role))
     .flatMap(([, { Properties }]) => (Properties?.PolicyDocument?.Statement ?? []) as { Action: string | string[]; Resource: unknown; Condition?: unknown }[])
     .filter(({ Action }) => [Action].flat().some((action) => action.startsWith("bedrock:")));
-  const claude = ["anthropic.claude-sonnet-5-5", "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-opus-5-5"];
+  const claude = ["anthropic.claude-sonnet-5-5", "anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-haiku-5-5", "anthropic.claude-opus-5-5"];
   const globalAndUs = ["openai.gpt-6-luna", "openai.gpt-6-sol", "xai.grok-4.7", "moonshotai.kimi-k3", "zai.glm-5.3"];
   const onDemand = ["openai.gpt-oss-120b-1:0", "qwen.qwen3-235b-a22b-2507-v1:0", "deepseek.v3.2", "zai.glm-5", "moonshotai.kimi-k2.5", "minimax.minimax-m2.5"];
   const models = [...claude, "amazon.nova-2-lite-v1:0", "amazon.nova-pro-v1:0", "amazon.nova-lite-v1:0", ...globalAndUs, ...onDemand, "amazon.nova-micro-v1:0"];

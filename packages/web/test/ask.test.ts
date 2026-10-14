@@ -183,47 +183,48 @@ test("an admin allows measured models, each flagged with where it processes mail
   await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: /^Mail and agents/ }).click();
   const sheet = page.getByRole("region", { name: "Mailbox agents" });
   await sheet.getByText("Spent $0.00 in").waitFor(wait);
-  const luna = sheet.getByRole("checkbox", { name: /^GPT-6 Luna/ });
+  const haikuFive = sheet.getByRole("checkbox", { name: /^Claude Haiku 5\.5/ });
   const novaLite = sheet.getByRole("checkbox", { name: /^Amazon Nova Lite/ });
-  await luna.waitFor(wait);
-  // The organization's own models stay allowed while they are its models, and the defaults before them are allowed too.
-  expect(await luna.isChecked()).toBe(true);
-  expect(await luna.isDisabled()).toBe(true);
-  expect(await sheet.getByRole("checkbox", { name: /^GPT-6 Sol/ }).isChecked()).toBe(true);
-  expect(await sheet.getByRole("checkbox", { name: /^Claude Haiku 4\.5/ }).isChecked()).toBe(true);
+  await haikuFive.waitFor(wait);
+  // The organization's own models stay allowed while they are its models, and GPT-6 Luna and Sol, the defaults before them, are allowed too.
+  expect(await haikuFive.isChecked()).toBe(true);
+  expect(await haikuFive.isDisabled()).toBe(true);
   expect(await sheet.getByRole("checkbox", { name: /^Claude Sonnet 5\.5/ }).isChecked()).toBe(true);
+  expect(await sheet.getByRole("checkbox", { name: /^GPT-6 Luna/ }).isChecked()).toBe(true);
+  expect(await sheet.getByRole("checkbox", { name: /^GPT-6 Sol/ }).isChecked()).toBe(true);
+  expect(await sheet.getByRole("checkbox", { name: /^Claude Haiku 4\.5/ }).isChecked()).toBe(false);
   expect(await novaLite.isChecked()).toBe(false);
   // Each model is flagged with where it processes mail, which a screen reader hears as a sentence.
-  for (const [model, place] of [["GPT-6 Luna", "any AWS region with room"], ["GPT-6 Sol", "any AWS region with room"], ["Claude Haiku 4\\.5", "the EU"], ["Claude Sonnet 5\\.5", "the EU"], ["Amazon Nova 2 Lite", "the EU"], ["Amazon Nova Lite", "eu-north-1"], ["Amazon Nova Pro", "the EU"]]) {
+  for (const [model, place] of [["Claude Haiku 5\\.5", "the EU"], ["Claude Sonnet 5\\.5", "the EU"], ["GPT-6 Luna", "any AWS region with room"], ["GPT-6 Sol", "any AWS region with room"], ["Claude Haiku 4\\.5", "the EU"], ["Amazon Nova 2 Lite", "the EU"], ["Amazon Nova Lite", "eu-north-1"], ["Amazon Nova Pro", "the EU"]]) {
     expect(await sheet.getByRole("checkbox", { name: new RegExp(`^${model}\\s*, processed in ${place}`) }).count()).toBe(1);
   }
   expect(await sheet.getByText("Questions 100%, drafting 100%, triage 75%, label tasks 100%. About 2.0 cents a task.").isVisible()).toBe(true);
-  expect(await sheet.getByRole("combobox", { name: "Everyday model" }).inputValue()).toBe("openai.gpt-6-luna");
-  expect(await sheet.getByRole("combobox", { name: "Harder model" }).inputValue()).toBe("openai.gpt-6-sol");
+  expect(await sheet.getByRole("combobox", { name: "Everyday model" }).inputValue()).toBe("anthropic.claude-haiku-5-5");
+  expect(await sheet.getByRole("combobox", { name: "Harder model" }).inputValue()).toBe("anthropic.claude-sonnet-5-5");
   expect(await sheet.getByRole("checkbox", { name: /^Ask the decider first/ }).isChecked()).toBe(false);
-  // The organization's models say plainly where they take the mail.
+  // The organization's models keep the mail in the EU, and a model that doesn't says plainly where it takes it.
   const outside = (models: string) => sheet.getByText(`With ${models}, what Coo reads of the mail may be processed outside the EU, in any AWS region with room. To keep it in the EU, choose models that run in the EU.`);
-  expect(await outside("GPT-6 Luna and GPT-6 Sol").isVisible()).toBe(true);
+  expect(await sheet.getByText("what Coo reads of the mail may be processed outside the EU").count()).toBe(0);
+  await sheet.getByRole("combobox", { name: "Everyday model" }).selectOption({ label: "GPT-6 Luna, in any AWS region with room" });
+  await outside("GPT-6 Luna").waitFor(wait);
 
   // Nova Lite runs in eu-north-1 itself, inside the deployment's continent, so it is allowed at once.
   await novaLite.check();
   await sheet.getByRole("combobox", { name: "Everyday model" }).selectOption({ label: "Amazon Nova Lite, in eu-north-1" });
-  await outside("GPT-6 Sol").waitFor(wait);
-  await sheet.getByRole("combobox", { name: "Harder model" }).selectOption({ label: "Claude Sonnet 5.5, in the EU" });
-  expect(await sheet.getByText("what Coo reads of the mail may be processed outside the EU").count()).toBe(0);
+  await expect.poll(() => sheet.getByText("what Coo reads of the mail may be processed outside the EU").count(), wait).toBe(0);
   await sheet.getByRole("checkbox", { name: /^Ask the decider first/ }).check();
   await sheet.getByRole("textbox", { name: "US dollars a month" }).fill("5");
   await sheet.getByRole("button", { name: "Save" }).click();
 
   await expect.poll(async () => (await duva.signIn("ada@example.org").GET("/organization/settings")).data, wait).toMatchObject({
-    mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", "openai.gpt-6-luna", "openai.gpt-6-sol", "amazon.nova-lite-v1:0"],
+    mailboxAgentAllowedModels: ["anthropic.claude-haiku-5-5", "anthropic.claude-sonnet-5-5", "openai.gpt-6-luna", "openai.gpt-6-sol", "amazon.nova-lite-v1:0"],
     mailboxAgentModel: "amazon.nova-lite-v1:0",
     mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5",
     mailboxAgentDecider: true,
     mailboxAgentSpendCap: 5,
   });
-  // Luna is no longer the everyday model, so it may be taken off the list.
-  expect(await luna.isDisabled()).toBe(false);
+  // Haiku 5.5 is no longer the everyday model, so it may be taken off the list.
+  expect(await haikuFive.isDisabled()).toBe(false);
 });
 
 test("allowing a model that processes mail outside the deployment's continent says so first, and waits for the admin", budget, async () => {

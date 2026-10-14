@@ -298,7 +298,7 @@ test("an everyday answer that says Coo remembered what no call kept is handed to
     () => [{ text: "Kept: you see the dentist on 20 October." }],
   );
   const { duva, ada, receive, memories } = await withLinus({ model });
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5" } });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5"], mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentHarderModel: "anthropic.claude-sonnet-5-5" } });
   thread = await receive(dentist);
 
   const { events } = await duva.askAgent("linus@example.org", { words: "Read my dentist's mail and remember when I go." });

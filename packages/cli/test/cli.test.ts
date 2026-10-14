@@ -239,7 +239,7 @@ test("an admin allows a measured model with organization change-settings, and a 
     "--mailboxAgentAllowedModels",
     "amazon.nova-2-lite-v1:0",
     "--mailboxAgentAllowedModels",
-    "anthropic.claude-haiku-4-5-20251001-v1:0",
+    "anthropic.claude-haiku-5-5",
     "--mailboxAgentAllowedModels",
     "anthropic.claude-sonnet-5-5",
     "--mailboxAgentAllowedModels",
@@ -252,7 +252,7 @@ test("an admin allows a measured model with organization change-settings, and a 
   const kept = await machine.duva("preferences", "change", "--no-cooEverydayModel");
 
   expect(allowed.exitCode).toBe(0);
-  expect(JSON.parse(allowed.stdout).mailboxAgentAllowedModels).toEqual(["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5", "openai.gpt-6-luna", "openai.gpt-6-sol", "amazon.nova-2-lite-v1:0"]);
+  expect(JSON.parse(allowed.stdout).mailboxAgentAllowedModels).toEqual(["anthropic.claude-haiku-5-5", "anthropic.claude-sonnet-5-5", "openai.gpt-6-luna", "openai.gpt-6-sol", "amazon.nova-2-lite-v1:0"]);
   const models = (JSON.parse(listed.stdout) as { models: { model: string; processedIn: string; allowed: boolean }[] }).models;
   expect(models.find(({ model }) => model === "amazon.nova-2-lite-v1:0")).toMatchObject({ processedIn: "continent", allowed: true });
   expect(models.find(({ model }) => model === "amazon.nova-pro-v1:0")).toMatchObject({ allowed: false });

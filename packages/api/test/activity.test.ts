@@ -436,7 +436,7 @@ const use = (name: string, input: Record<string, unknown> = {}): ModelEvent => (
 const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
 const sonnet = "anthropic.claude-sonnet-5-5";
 /** Claude Haiku 4.5 for the everyday work and Sonnet 5.5 for the harder, whose prices the costs below are worked from. */
-const haikuWithSonnet = { mailboxAgentModel: haiku, mailboxAgentHarderModel: sonnet } as const;
+const haikuWithSonnet = { mailboxAgentAllowedModels: [haiku, sonnet], mailboxAgentModel: haiku, mailboxAgentHarderModel: sonnet } satisfies components["schemas"]["SettingsChanges"];
 
 test("each turn of Ask Coo is one event under Coo, saying what was asked, and opening into what Coo read, the models, a handover and the cost", async () => {
   const words = "Is the receipt from Linus about the dinner last Friday, and did he say whether the restaurant takes cards or only cash at the door?";

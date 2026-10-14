@@ -417,7 +417,7 @@ await check("a first admin who signs in at an address on the organization's doma
   const missing = await firstAdminAddressMissing(table);
   return missing === undefined ? undefined : `no mailbox or group has ${missing}, so the codes managed login emails the first admin reach nobody. Run duva deploy again, or give them a mailbox there in Settings, under Addresses.`;
 });
-await check("Duva's default models answer where a deployment in this region calls them (#158)", async () => {
+await check("Duva's default models answer where a deployment in this region calls them (#158, #175)", async () => {
   const silent: string[] = [];
   for (const model of [defaultMailboxAgentModel, defaultHarderModel]) {
     const call = callOf(model, region!);

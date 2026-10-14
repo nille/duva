@@ -458,7 +458,7 @@ test("a paused mailbox agent doesn't go on, and one-click alone is tried", async
 });
 
 test("the agent's model calls count toward the spend cap, and at the cap the page fails and it goes on without the model", async () => {
-  // Each call takes a million tokens, $2 with the default harder model, GPT-6 Sol through global, past a $1 cap.
+  // Each call takes a million tokens, $2.20 with the default harder model, Claude Sonnet 5.5 through eu, past a $1 cap.
   const model: Model = async function* () {
     yield use("type", { element: 1, value: "grace@example.com" });
     yield { usage: { inputTokens: 1_000_000, outputTokens: 0 } };

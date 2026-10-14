@@ -5641,9 +5641,9 @@ export interface components {
             agentNewRecipientsPerDayCap: components["schemas"]["AgentNewRecipientsPerDayCap"];
             undoWindowSeconds: components["schemas"]["UndoWindowSeconds"];
             mailboxAgentAllowedModels: components["schemas"]["MailboxAgentAllowedModels"];
-            /** @description The organization's everyday model, which a mailbox agent answers its human with in Ask Coo and over MCP, unless the decider finds a turn complex, and does the tasks labels' prompts give, unless its human chose another. One of mailboxAgentAllowedModels. GPT-6 Luna by default. */
+            /** @description The organization's everyday model, which a mailbox agent answers its human with in Ask Coo and over MCP, unless the decider finds a turn complex, and does the tasks labels' prompts give, unless its human chose another. One of mailboxAgentAllowedModels. Claude Haiku 5.5 by default. */
             mailboxAgentModel: components["schemas"]["MailboxAgentModel"];
-            /** @description The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. GPT-6 Sol by default. */
+            /** @description The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. Claude Sonnet 5.5 by default. */
             mailboxAgentHarderModel: components["schemas"]["MailboxAgentModel"];
             mailboxAgentDecider: components["schemas"]["MailboxAgentDecider"];
             mailboxAgentWebSearch: components["schemas"]["MailboxAgentWebSearch"];
@@ -5664,9 +5664,9 @@ export interface components {
             agentNewRecipientsPerDayCap?: components["schemas"]["AgentNewRecipientsPerDayCap"];
             undoWindowSeconds?: components["schemas"]["UndoWindowSeconds"];
             mailboxAgentAllowedModels?: components["schemas"]["MailboxAgentAllowedModels"];
-            /** @description The organization's everyday model, which a mailbox agent answers its human with in Ask Coo and over MCP, unless the decider finds a turn complex, and does the tasks labels' prompts give, unless its human chose another. One of mailboxAgentAllowedModels. GPT-6 Luna by default. */
+            /** @description The organization's everyday model, which a mailbox agent answers its human with in Ask Coo and over MCP, unless the decider finds a turn complex, and does the tasks labels' prompts give, unless its human chose another. One of mailboxAgentAllowedModels. Claude Haiku 5.5 by default. */
             mailboxAgentModel?: components["schemas"]["MailboxAgentModel"];
-            /** @description The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. GPT-6 Sol by default. */
+            /** @description The organization's harder model, for the harder work: writing mail that may be sent, unsubscribing on a sender's page, a turn the decider finds complex, a run the everyday model hands over, and Think harder, unless the agent's human chose another. One of mailboxAgentAllowedModels. Claude Sonnet 5.5 by default. */
             mailboxAgentHarderModel?: components["schemas"]["MailboxAgentModel"];
             mailboxAgentDecider?: components["schemas"]["MailboxAgentDecider"];
             mailboxAgentWebSearch?: components["schemas"]["MailboxAgentWebSearch"];
@@ -5859,8 +5859,8 @@ export interface components {
          * @description A model on Amazon Bedrock a mailbox agent thinks with, by its Bedrock model ID. Only the measured models can be allowed and chosen, those listMailboxAgentModels lists, each with its success on Coo's evaluation, its cost per task and where it processes mail.
          * @enum {string}
          */
-        MailboxAgentModel: "anthropic.claude-sonnet-5-5" | "anthropic.claude-haiku-4-5-20251001-v1:0" | "anthropic.claude-opus-5-5" | "amazon.nova-2-lite-v1:0" | "amazon.nova-pro-v1:0" | "amazon.nova-lite-v1:0" | "openai.gpt-6-luna" | "openai.gpt-6-sol" | "xai.grok-4.7" | "openai.gpt-oss-120b-1:0" | "qwen.qwen3-235b-a22b-2507-v1:0" | "deepseek.v3.2" | "zai.glm-5" | "moonshotai.kimi-k2.5" | "minimax.minimax-m2.5" | "moonshotai.kimi-k3" | "zai.glm-5.3";
-        /** @description The measured models each human may choose their mailbox agent's everyday and harder model from. They include the organization's two defaults, mailboxAgentModel and mailboxAgentHarderModel. GPT-6 Luna, GPT-6 Sol, Claude Haiku 4.5 and Claude Sonnet 5.5 by default. A model that processes mail outside the deployment's continent may be allowed too, such as one available only in the US in an EU deployment: what its agents read of the mail then goes there. Taking a model off the list takes it from each human who chose it, whose agent then thinks with the organization's default. */
+        MailboxAgentModel: "anthropic.claude-sonnet-5-5" | "anthropic.claude-haiku-4-5-20251001-v1:0" | "anthropic.claude-haiku-5-5" | "anthropic.claude-opus-5-5" | "amazon.nova-2-lite-v1:0" | "amazon.nova-pro-v1:0" | "amazon.nova-lite-v1:0" | "openai.gpt-6-luna" | "openai.gpt-6-sol" | "xai.grok-4.7" | "openai.gpt-oss-120b-1:0" | "qwen.qwen3-235b-a22b-2507-v1:0" | "deepseek.v3.2" | "zai.glm-5" | "moonshotai.kimi-k2.5" | "minimax.minimax-m2.5" | "moonshotai.kimi-k3" | "zai.glm-5.3";
+        /** @description The measured models each human may choose their mailbox agent's everyday and harder model from. They include the organization's two defaults, mailboxAgentModel and mailboxAgentHarderModel. Claude Haiku 5.5, Claude Sonnet 5.5, GPT-6 Luna and GPT-6 Sol by default. A model that processes mail outside the deployment's continent may be allowed too, such as one available only in the US in an EU deployment: what its agents read of the mail then goes there. Taking a model off the list takes it from each human who chose it, whose agent then thinks with the organization's default. */
         MailboxAgentAllowedModels: components["schemas"]["MailboxAgentModel"][];
         /**
          * @description The inference profile Bedrock runs a model through, which decides where the mail the agents read is processed: eu keeps it in the EU's AWS regions, us in the US's, and global sends it to any region with capacity. none runs the model in the region it is called in itself.

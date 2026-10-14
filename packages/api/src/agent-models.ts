@@ -28,6 +28,8 @@ interface Price {
 export const mailboxAgentModels: Record<MailboxAgentModel, Price & { name: string; profiles: MailboxAgentProfile[]; inRegion: MailboxAgentRegion[] }> = {
   "anthropic.claude-sonnet-5-5": { name: "Claude Sonnet 5.5", input: 2.2, output: 11, profiles: ["eu", "us", "global"], inRegion: [] },
   "anthropic.claude-haiku-4-5-20251001-v1:0": { name: "Claude Haiku 4.5", input: 1.1, output: 5.5, profiles: ["eu", "us", "global"], inRegion: [] },
+  // A tenth of Haiku 4.5's price, as GPT-6 Luna's (Price List API, 2026-10-13, #175).
+  "anthropic.claude-haiku-5-5": { name: "Claude Haiku 5.5", input: 0.11, output: 0.55, profiles: ["eu", "us", "global"], inRegion: [] },
   "anthropic.claude-opus-5-5": { name: "Claude Opus 5.5", input: 4.4, output: 22, profiles: ["eu", "us", "global"], inRegion: [] },
   "amazon.nova-2-lite-v1:0": { name: "Amazon Nova 2 Lite", input: 0.363, output: 2.992, profiles: ["eu", "us", "global"], inRegion: [] },
   "amazon.nova-pro-v1:0": { name: "Amazon Nova Pro", input: 0.87, output: 3.48, profiles: ["eu", "us", "none"], inRegion: ["us-east-1"] },
@@ -50,16 +52,18 @@ export const mailboxAgentModels: Record<MailboxAgentModel, Price & { name: strin
 };
 
 /**
- * The organization's everyday model until an admin chooses another, as Nicklas chose from #150's
- * measurements (#158). In the EU it runs only through the global profile, so with it an EU
- * deployment's mail may be processed outside the EU.
+ * The organization's everyday model until an admin chooses another, as Nicklas chose once it was
+ * measured (#175). In the EU it runs through the eu profile, so an EU deployment's mail stays in the EU.
  */
-export const defaultMailboxAgentModel: MailboxAgentModel = "openai.gpt-6-luna";
+export const defaultMailboxAgentModel: MailboxAgentModel = "anthropic.claude-haiku-5-5";
 
-/** The organization's harder model until an admin chooses another (#158), through the global profile in the EU as well. */
-export const defaultHarderModel: MailboxAgentModel = "openai.gpt-6-sol";
+/** The organization's harder model until an admin chooses another (#175), through the eu profile in the EU as well. */
+export const defaultHarderModel: MailboxAgentModel = "anthropic.claude-sonnet-5-5";
 
-/** The defaults before them, Claude Haiku 4.5 and Sonnet 5.5, as Nicklas chose from #132's measurements, which organizations set up before #158 keep. */
+/** The defaults from #158 until #175, GPT-6 Luna and Sol, which a new organization allows beside the defaults. */
+export const lunaAndSol = { everyday: "openai.gpt-6-luna", harder: "openai.gpt-6-sol" } as const satisfies Record<string, MailboxAgentModel>;
+
+/** The defaults before those, Claude Haiku 4.5 and Sonnet 5.5, as Nicklas chose from #132's measurements, which organizations set up before #158 keep. */
 export const earlierDefaultModels = { everyday: "anthropic.claude-haiku-4-5-20251001-v1:0", harder: "anthropic.claude-sonnet-5-5" } as const satisfies Record<string, MailboxAgentModel>;
 
 /**
@@ -68,8 +72,8 @@ export const earlierDefaultModels = { everyday: "anthropic.claude-haiku-4-5-2025
  */
 export const measuredModelIds = Object.keys(measuredModels) as MailboxAgentModel[];
 
-/** The models a new organization allows: the defaults, and the defaults before them (#158), in the measured models' order, as Duva keeps the list. */
-export const defaultAllowedModels = measuredModelIds.filter((model) => ([defaultMailboxAgentModel, defaultHarderModel, earlierDefaultModels.everyday, earlierDefaultModels.harder] as MailboxAgentModel[]).includes(model));
+/** The models a new organization allows: the defaults, and GPT-6 Luna and Sol (#175), in the measured models' order, as Duva keeps the list. */
+export const defaultAllowedModels = measuredModelIds.filter((model) => ([defaultMailboxAgentModel, defaultHarderModel, lunaAndSol.everyday, lunaAndSol.harder] as MailboxAgentModel[]).includes(model));
 
 export const isMeasured = (model: string): model is MailboxAgentModel => measuredModelIds.some((measured) => measured === model);
 

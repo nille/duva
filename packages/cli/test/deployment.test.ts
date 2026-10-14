@@ -53,22 +53,16 @@ test("re-running with the same domain changes nothing", async () => {
 
   const again = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
-  // What Coo's models mean for the mail is said on the first deploy only.
-  const { cooModels: _, ...report } = first;
-  expect(again).toEqual(report);
+  expect(again).toEqual(first);
   expect(world.aws.changes).toEqual(changes);
 });
 
-test("the first deploy in the EU says once that Coo's models may process the mail outside the EU, and how to keep it there", async () => {
+test("the first deploy in the EU says nothing of where Coo's models run, as they run in the EU", async () => {
   const world = newWorld();
 
   const first = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
-  const again = await deployDuva(world);
 
-  expect(first.cooModels).toBe(
-    "Coo thinks with GPT-6 Luna, and GPT-6 Sol for the harder work. For eu-north-1, Bedrock runs GPT-6 Luna and GPT-6 Sol in any AWS region with room, so what Coo reads of the mail may be processed outside the EU. To keep it there, allow and choose other models in Settings, under Mailbox agents.",
-  );
-  expect(again).not.toHaveProperty("cooModels");
+  expect(first).not.toHaveProperty("cooModels");
 });
 
 test("the first deploy in the US says nothing of where Coo's models run, as they run in the US", async () => {
@@ -78,6 +72,19 @@ test("the first deploy in the US says nothing of where Coo's models run, as they
   const first = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
 
   expect(first).not.toHaveProperty("cooModels");
+});
+
+test("the first deploy outside the EU and the US says once that Coo's models may process the mail outside its continent", async () => {
+  const world = newWorld();
+  world.aws.region = "ap-southeast-2";
+
+  const first = await deployDuva({ ...world, admin, recovery, domain: "duva.example.com" });
+  const again = await deployDuva(world);
+
+  expect(first.cooModels).toBe(
+    "Coo thinks with Claude Haiku 5.5, and Claude Sonnet 5.5 for the harder work. For ap-southeast-2, Bedrock runs Claude Haiku 5.5 and Claude Sonnet 5.5 in any AWS region with room, so what Coo reads of the mail may be processed outside the continent Duva is deployed on.",
+  );
+  expect(again).not.toHaveProperty("cooModels");
 });
 
 test("a re-run without a domain keeps the deployed one", async () => {
@@ -584,8 +591,7 @@ test("a re-run keeps the web app's host and its certificate, and waits for nothi
 
   const again = await deployDuva(world);
 
-  const { cooModels: _, ...report } = first;
-  expect(again).toEqual(report);
+  expect(again).toEqual(first);
   expect(world.aws.changes).toEqual(changes);
   expect(world.said).toHaveLength(said);
 });

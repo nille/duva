@@ -391,6 +391,7 @@ test("a run stops at the organization's spend cap, with an alert to its sponsor,
 });
 
 const haiku = "anthropic.claude-haiku-4-5-20251001-v1:0";
+const haikuFive = "anthropic.claude-haiku-5-5";
 const sonnet = "anthropic.claude-sonnet-5-5";
 const novaLite = "amazon.nova-lite-v1:0";
 const novaTwo = "amazon.nova-2-lite-v1:0";
@@ -410,7 +411,7 @@ test("admins allow measured models, and set the organization's everyday and hard
   expect(before).toMatchObject({ mailboxAgentAllowedModels: defaultAllowedModels, mailboxAgentModel: defaultMailboxAgentModel, mailboxAgentHarderModel: defaultHarderModel, mailboxAgentDecider: false, mailboxAgentSpendCap: 20 });
   expect(before).not.toHaveProperty("mailboxAgentTaskModel");
   expect((unmeasured.error as { message: string }).message).toBe(
-    "Give mailboxAgentAllowedModels as a list of different measured models, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-sonnet-5-5, deepseek.v3.2, zai.glm-5, zai.glm-5.3, openai.gpt-6-luna, openai.gpt-6-sol, openai.gpt-oss-120b-1:0, xai.grok-4.7, moonshotai.kimi-k2.5, moonshotai.kimi-k3, minimax.minimax-m2.5, amazon.nova-2-lite-v1:0, amazon.nova-lite-v1:0, amazon.nova-pro-v1:0, qwen.qwen3-235b-a22b-2507-v1:0.",
+    "Give mailboxAgentAllowedModels as a list of different measured models, anthropic.claude-haiku-4-5-20251001-v1:0, anthropic.claude-haiku-5-5, anthropic.claude-sonnet-5-5, deepseek.v3.2, zai.glm-5, zai.glm-5.3, openai.gpt-6-luna, openai.gpt-6-sol, openai.gpt-oss-120b-1:0, xai.grok-4.7, moonshotai.kimi-k2.5, moonshotai.kimi-k3, minimax.minimax-m2.5, amazon.nova-2-lite-v1:0, amazon.nova-lite-v1:0, amazon.nova-pro-v1:0, qwen.qwen3-235b-a22b-2507-v1:0.",
   );
   expect((notAllowed.error as { message: string }).message).toBe(
     "Amazon Nova 2 Lite is the organization's everyday model, so it must be allowed. Allow it in mailboxAgentAllowedModels, or give mailboxAgentModel as one of those allowed.",
@@ -434,6 +435,7 @@ test("every actor lists the measured models, each with its success by kind of wo
   // itself, and Nova Lite and the open-weight models in eu-north-1 itself.
   expect(data!.models.map(({ model, profileId, region, processedIn }) => [model, profileId, region, processedIn])).toEqual([
     [haiku, `eu.${haiku}`, "eu-central-1", "continent"],
+    [haikuFive, `eu.${haikuFive}`, "eu-central-1", "continent"],
     [sonnet, `eu.${sonnet}`, "eu-central-1", "continent"],
     ["deepseek.v3.2", "deepseek.v3.2", "eu-north-1", "region"],
     ["zai.glm-5", "zai.glm-5", "eu-north-1", "region"],
@@ -473,6 +475,7 @@ test("a deployment in the US calls each measured model in the US, through us-wes
   // The open-weight models run on demand in us-west-2, and the rest through us (docs/aws.md).
   expect(data!.models.map(({ model, profileId, region, processedIn }) => [model, profileId, region, processedIn])).toEqual([
     [haiku, `us.${haiku}`, "us-west-2", "continent"],
+    [haikuFive, `us.${haikuFive}`, "us-west-2", "continent"],
     [sonnet, `us.${sonnet}`, "us-west-2", "continent"],
     ["deepseek.v3.2", "deepseek.v3.2", "us-west-2", "continent"],
     ["zai.glm-5", "zai.glm-5", "us-west-2", "continent"],
@@ -633,16 +636,16 @@ test("setup carries over the models admins chose before as the organization's de
   expect((await ada.GET("/organization/settings")).data).toEqual(data);
 });
 
-test("a new organization's Coo thinks with GPT-6 Luna, and GPT-6 Sol for the harder work, and admins may allow Claude Haiku 4.5 and Sonnet 5.5 besides", async () => {
+test("a new organization's Coo thinks with Claude Haiku 5.5, and Claude Sonnet 5.5 for the harder work, and GPT-6 Luna and Sol are allowed besides", async () => {
   const duva = await startDuva({ admin: "ada@example.org" });
   const ada = duva.signIn("ada@example.org");
 
   await duva.setUp({ admin: "ada@example.org" });
 
   expect((await ada.GET("/organization/settings")).data).toMatchObject({
-    mailboxAgentAllowedModels: [haiku, sonnet, "openai.gpt-6-luna", "openai.gpt-6-sol"],
-    mailboxAgentModel: "openai.gpt-6-luna",
-    mailboxAgentHarderModel: "openai.gpt-6-sol",
+    mailboxAgentAllowedModels: [haikuFive, sonnet, "openai.gpt-6-luna", "openai.gpt-6-sol"],
+    mailboxAgentModel: haikuFive,
+    mailboxAgentHarderModel: sonnet,
   });
 });
 

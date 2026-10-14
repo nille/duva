@@ -447,6 +447,7 @@ export const strings = {
     models: {
       "anthropic.claude-sonnet-5-5": "Claude Sonnet 5.5",
       "anthropic.claude-haiku-4-5-20251001-v1:0": "Claude Haiku 4.5",
+      "anthropic.claude-haiku-5-5": "Claude Haiku 5.5",
       "anthropic.claude-opus-5-5": "Claude Opus 5.5",
       "amazon.nova-2-lite-v1:0": "Amazon Nova 2 Lite",
       "amazon.nova-pro-v1:0": "Amazon Nova Pro",

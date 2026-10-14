@@ -54,7 +54,7 @@ As of 2026-10-09:
 - **Runs on Amazon Bedrock AgentCore Runtime,** one per deployment, for every human mailbox.
 - **Can be asked in the web app** (Ask Coo), or from an MCP client such as Claude Code.
 - **Label prompts give it tasks.** A label's prompt runs on each message that gets the label.
-- **Thinks with GPT-6 Luna** by default, and hands drafting and opt-out browsing to GPT-6 Sol. Bedrock runs both only through its global profile for an EU deployment, so the deployment's mail may be processed outside the EU. Admins can allow and choose others, Claude Haiku 4.5 and Sonnet 5.5 among them, which run in the EU through the `eu.` profile. See `docs/research/coo-models.md` for what each setup achieved and cost.
+- **Thinks with Claude Haiku 5.5** by default, and hands drafting and opt-out browsing to Claude Sonnet 5.5. For an EU deployment Bedrock runs both in the EU, through its `eu.` profile, so the mail stays there. Admins can allow and choose others, GPT-6 Luna and Sol among them, which Bedrock runs only through its global profile, so with them an EU deployment's mail may be processed outside the EU. See `docs/research/coo-models.md` for what each setup achieved and cost.
 
 ## How it's built
 

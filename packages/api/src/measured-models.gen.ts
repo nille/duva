@@ -12,6 +12,16 @@ export const measuredModels = {
     },
     "costPerTask": 0.01987
   },
+  "anthropic.claude-haiku-5-5": {
+    "success": {
+      "conversation": 1,
+      "drafting": 1,
+      "triage": 1,
+      "labelTask": 1,
+      "refusal": 1
+    },
+    "costPerTask": 0.003932
+  },
   "anthropic.claude-sonnet-5-5": {
     "success": {
       "conversation": 1,

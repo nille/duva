@@ -333,7 +333,7 @@ test("a task given at the spend cap fails, with an alert to its sponsor, and so 
   );
   const { ada, linus, receipts, prompt, label, thread, receive } = await withMailbox({ model });
   await prompt(receipts, "Note the amount.");
-  await ada.PATCH("/organization/settings", { body: { mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentSpendCap: 1 } });
+  await ada.PATCH("/organization/settings", { body: { mailboxAgentAllowedModels: ["anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5"], mailboxAgentModel: "anthropic.claude-haiku-4-5-20251001-v1:0", mailboxAgentSpendCap: 1 } });
   const first = await receive(fromShop("Your receipt", "You paid 42 euros.", "order-1"));
   const second = await receive(fromShop("Another receipt", "You paid 7 euros.", "order-9"));
   const third = await receive(fromShop("A third receipt", "You paid 1 euro.", "order-5"));

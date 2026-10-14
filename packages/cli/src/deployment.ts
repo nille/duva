@@ -350,7 +350,11 @@ async function webRecords(aws: Aws, dns: Dns, arn: string, hosts: string[], dist
   ]);
 }
 
-/** Where Coo's default models process what it reads of the mail, if that may be outside the deployment's continent (#158). */
+/**
+ * Where Coo's default models process what it reads of the mail, if that may be outside the
+ * deployment's continent (#158). The defaults run on the EU's and the US's own (#175), so only a
+ * deployment elsewhere hears it, where no measured model keeps the mail on its continent.
+ */
 function cooModels(region: string): { cooModels?: string } {
   const outside = [defaultMailboxAgentModel, defaultHarderModel].filter((model) => ["us", "anywhere"].includes(callOf(model, region).processedIn));
   if (outside.length === 0) return {};
@@ -358,9 +362,7 @@ function cooModels(region: string): { cooModels?: string } {
   const place = { us: "in the US", anywhere: "in any AWS region with room" }[callOf(outside[0]!, region).processedIn as "us" | "anywhere"];
   const continent = region.startsWith("eu-") ? "the EU" : "the continent Duva is deployed on";
   return {
-    cooModels:
-      `Coo thinks with ${name(defaultMailboxAgentModel)}, and ${name(defaultHarderModel)} for the harder work. For ${region}, Bedrock runs ${outside.map(name).join(" and ")} ${place}, ` +
-      `so what Coo reads of the mail may be processed outside ${continent}. To keep it there, allow and choose other models in Settings, under Mailbox agents.`,
+    cooModels: `Coo thinks with ${name(defaultMailboxAgentModel)}, and ${name(defaultHarderModel)} for the harder work. For ${region}, Bedrock runs ${outside.map(name).join(" and ")} ${place}, so what Coo reads of the mail may be processed outside ${continent}.`,
   };
 }
 
