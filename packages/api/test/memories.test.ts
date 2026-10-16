@@ -284,8 +284,9 @@ test("what Coo did in an earlier answer reaches it as Duva's note in the turn af
   await duva.askAgent("linus@example.org", { words: "Hi" });
 
   const messages = requests[2]!.messages;
+  const answered = (await duva.signIn("linus@example.org").GET("/mailbox-agent")).data!.turns[1]!;
   expect(messages.find(({ role }) => role === "assistant")!.content).toEqual([{ text: "I'll remember that." }]);
-  expect(messages.at(-1)!.content[0]).toEqual({ text: "[Duva, not your owner: in your answer above, you used keepMemory.]" });
+  expect(messages.at(-1)!.content[0]).toEqual({ text: `[Duva, not your owner: in your answer above, given at ${answered.at}, you used keepMemory.]` });
   expect(messages.at(-1)!.content[1]).toMatchObject({ text: "Hi" });
 });
 

@@ -337,7 +337,8 @@ function systemPrompt(
                 `${payload.owner} keeps secrets that browse can type into a page without you or it ever seeing them: ${payload.secrets.map(({ name, kind }) => `"${name}" (${kind})`).join(", ")}. Name in browse's secrets those the work needs, and only on the site they are for. A card pays on its own only on the sites and within the limits ${payload.owner} set for it, and elsewhere or above them the payment waits for their approval, after which Duva goes back to pay it by itself.`,
                 ...(mayPay(payload)
                   ? [
-                      `Before you say whether a payment waits, was approved, was paid or lapsed, and before you browse to pay for something again, look it up with listPayments: ${payload.owner} decides in Approvals, and Duva goes back to pay what they approve by itself, so one may have changed since you last saw it.`,
+                      // Haiku 5.5 called its earlier answer wrong when only the payment had changed since, and named no site (#184).
+                      `Before you say whether a payment waits, was approved, was paid or lapsed, and before you browse to pay for something again, look it up with listPayments, and name each by its amount and site. ${payload.owner} decides in Approvals, and Duva goes back to pay what they approve by itself, between your answers. So a payment that stands otherwise than you said before changed after you said it: say how it stands now and when it changed, never that you were wrong or out of date.`,
                     ]
                   : []),
               ]),

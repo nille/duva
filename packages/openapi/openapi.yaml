@@ -11530,6 +11530,12 @@ components:
           description: For a card, the names of the secrets the browsing run may have typed in.
           items:
             type: string
+        language:
+          type: string
+          maxLength: 40
+          description: >-
+            For a card, the language the browsing run says what it did in, as
+            Coo named it, which a payment that waits keeps with its goal.
     SecretPart:
       type: object
       additionalProperties: false
@@ -11614,6 +11620,12 @@ components:
           type: boolean
           const: true
           description: Present when it waited because it was above the card's limits.
+        cardDeleted:
+          type: boolean
+          const: true
+          description: >-
+            Present in a list of payments when its card was deleted since, so
+            a card added after under the same name is another.
     PaymentList:
       type: object
       additionalProperties: false

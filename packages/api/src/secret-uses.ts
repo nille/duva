@@ -46,7 +46,12 @@ export const useSecret: OperationHandler = async (event, { table, secretKeys }, 
     if (what === "") return refusal(400, "Give for: what the payment is for, in a few words.");
     const page = pageOn(body.page, site);
     if (page === undefined) return refusal(400, `Give page as the address of the page the card goes into, as the browser reports it, on ${site}.`);
-    const asked = { goal: typeof body.goal === "string" ? body.goal.trim().slice(0, 1000) : "", values: textsIn(body.values).slice(0, 20), secrets: textsIn(body.secrets).slice(0, 100) };
+    const asked = {
+      goal: typeof body.goal === "string" ? body.goal.trim().slice(0, 1000) : "",
+      values: textsIn(body.values).slice(0, 20),
+      secrets: textsIn(body.secrets).slice(0, 100),
+      ...(typeof body.language === "string" && body.language.trim() !== "" && { language: body.language.trim().slice(0, 40) }),
+    };
     const paying = await payWith(table, { card: secret, part, agent: actor, run, site, page, asked, amount, currency: body.currency, what, organizationPays: settings.mailboxAgentPayments });
     if ("refused" in paying) return refusal(409, paying.refused);
     if ("waiting" in paying) return { statusCode: 202, body: paying.waiting };

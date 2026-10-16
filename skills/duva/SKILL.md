@@ -1024,6 +1024,7 @@ Only a browsing run of a human's own Coo can call it, with its run's token, whic
 - `--goal`: For a card, the browsing run's goal, which a payment that waits keeps until it is decided, with values and secrets, so the fresh run that goes back to the page is given them again.
 - `--values` (once for each): For a card, the values the browsing run may type.
 - `--secrets` (once for each): For a card, the names of the secrets the browsing run may have typed in.
+- `--language`: For a card, the language the browsing run says what it did in, as Coo named it, which a payment that waits keeps with its goal.
 
 ## duva mailbox-agent address
 

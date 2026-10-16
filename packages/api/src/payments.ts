@@ -37,6 +37,7 @@ import {
   secretOf,
   spentIn,
   type StoredSecret,
+  storedSecrets,
   thisMonth,
   useItem,
 } from "./secrets.ts";
@@ -44,11 +45,15 @@ import { allItems, documents, isNew, pk, sk, type TransactItem } from "./table.t
 
 type Payment = components["schemas"]["Payment"];
 
-/** What a browsing run of Coo's was asked with: its goal, the values it may type and the names of the secrets it may have typed in. */
+/**
+ * What a browsing run of Coo's was asked with: its goal, the values it may type, the names of the
+ * secrets it may have typed in, and the language Coo named for its sentence, if any (#184).
+ */
 export interface Asked {
   goal: string;
   values: string[];
   secrets: string[];
+  language?: string;
 }
 
 /**
@@ -391,7 +396,10 @@ export const listPayments: OperationHandler = async (_event, { table }, actor) =
   // A mailbox agent lists its human's, so it can say how each stands (#184).
   const human = actor?.kind === "human" ? actor.id : actor?.kind === "agent" && actor.mailboxAgent === true ? actor.sponsor : undefined;
   if (human === undefined) return refusal(403, "Only humans and their own Coo list their Coo's payments. Ask your sponsor for theirs.");
-  return { statusCode: 200, body: { payments: (await storedPayments(table, human)).map(paymentOf) } satisfies components["schemas"]["PaymentList"] };
+  // A card deleted since leaves its paid payments, which another of the same name never made (#184).
+  const [payments, cards] = await Promise.all([storedPayments(table, human), storedSecrets(table, human)]);
+  const kept = new Set(cards.map(({ id }) => id));
+  return { statusCode: 200, body: { payments: payments.map((payment) => ({ ...paymentOf(payment), ...(!kept.has(payment.card) && { cardDeleted: true as const }) })) } satisfies components["schemas"]["PaymentList"] };
 };
 
 /**

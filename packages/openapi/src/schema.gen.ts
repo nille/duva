@@ -6528,6 +6528,8 @@ export interface components {
             values?: string[];
             /** @description For a card, the names of the secrets the browsing run may have typed in. */
             secrets?: string[];
+            /** @description For a card, the language the browsing run says what it did in, as Coo named it, which a payment that waits keeps with its goal. */
+            language?: string;
         };
         SecretPart: {
             /** @description The part, to type into the page and never show the model. */
@@ -6588,6 +6590,11 @@ export interface components {
              * @constant
              */
             aboveLimits?: true;
+            /**
+             * @description Present in a list of payments when its card was deleted since, so a card added after under the same name is another.
+             * @constant
+             */
+            cardDeleted?: true;
         };
         PaymentList: {
             payments: components["schemas"]["Payment"][];

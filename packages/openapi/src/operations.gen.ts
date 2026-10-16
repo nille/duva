@@ -3265,6 +3265,13 @@ export const operations = [
         "type": "strings",
         "required": false,
         "description": "For a card, the names of the secrets the browsing run may have typed in."
+      },
+      {
+        "name": "language",
+        "in": "body",
+        "type": "string",
+        "required": false,
+        "description": "For a card, the language the browsing run says what it did in, as Coo named it, which a payment that waits keeps with its goal."
       }
     ]
   },

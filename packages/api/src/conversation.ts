@@ -129,7 +129,7 @@ export async function prepareTurn(
   const payload: Omit<RunPayload, "token"> = {
     ...start,
     ...(mail !== undefined && mail.from !== human.email && { askedBy: mail.from }),
-    history: history.map(({ from, text, actions }) => ({ from, text, ...(from === "agent" && actions.length > 0 && { did: actionsRead(actions, "you") }) })),
+    history: history.map((each) => ({ from: each.from, text: each.text, ...(each.from === "agent" && didIn(each)) })),
     words: mail === undefined ? turn.text : mailedWords(human, mail, turn.text),
   };
   return { payload, turn, human, agent, month, cap, ...(harder && { harder }), inView: distinct(viewed.flatMap(({ read }) => read)) };
@@ -340,6 +340,17 @@ export function createConversation({
     },
     run: (prepared: PreparedTurn) => runTurn(table, runtime!, embedder, prepared),
   };
+}
+
+/**
+ * What Duva notes of one of the agent's turns in the history a later run reads (#151): when it was
+ * given, the operations it used, and each site it browsed with what that run said, quoted. Told
+ * less, Claude Haiku 5.5 called an answer wrong that a payment approved since had changed (#184).
+ */
+function didIn({ at, actions, browsed = [] }: ConversationTurn): { did?: string } {
+  const done = [...(actions.length > 0 ? [actionsRead(actions, "you").slice(0, -1)] : []), ...browsed.map(({ site, said }) => `you browsed ${site}, and its run said ${JSON.stringify(said)}`)];
+  const said = done.join("; and ");
+  return done.length === 0 ? {} : { did: `given at ${at}, ${said}${said.endsWith('"') ? "" : "."}` };
 }
 
 /** What an agent's turn did, as the agent reads it back later. */
