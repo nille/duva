@@ -420,21 +420,33 @@ test("a card with no sites pays nowhere on its own, and approving a payment on a
   ]);
 });
 
-test("a payment approved after its page expired isn't paid: the fresh run says so in Coo's activity, the payment stays approved, and a later run asked to pay it pays it", async () => {
-  const { model } = scripted({
+/**
+ * Coo was asked to buy the beans above Visa's limits, and Linus approved the payment once the
+ * checkout had expired, so the fresh run that went back couldn't pay it. The checkout is back after,
+ * and `page` is how the browsing runs that follow go.
+ */
+async function approvedAfterTheCheckoutExpired(page: ((request: Request) => ModelEvent[])[]) {
+  const { model, coo } = scripted({
     coo: [...buysTheBeans(), ...buysTheBeans()],
-    page: [...paysWithTheCard("149.00").slice(0, 1), () => [use("finish", { done: false, said: "The checkout had expired, so it couldn't pay." })], ...paysWithTheCard("149.00")],
+    page: [...paysWithTheCard("149.00").slice(0, 1), () => [use("finish", { done: false, said: "The checkout had expired, so it couldn't pay." })], ...page],
   });
-  const { linus, params, ask, keep, events, requests, checkout } = await withShop({ model });
-  await keep({ ...visa, ...limits, ...onTheShop });
+  const shop = await withShop({ model });
+  await shop.keep({ ...visa, ...limits, ...onTheShop });
+  await shop.ask("Buy the coffee beans in my cart at Example Shop.");
+  const { data: waiting } = await shop.linus.GET("/payments");
+  shop.checkout.expired = true;
+  await shop.linus.POST("/payments/{payment}/approve", { params: { path: { payment: waiting!.payments[0]!.id } } });
+  shop.checkout.expired = false;
+  return { ...shop, coo };
+}
 
-  await ask("Buy the coffee beans in my cart at Example Shop.");
-  const { data: waiting } = await linus.GET("/payments");
-  checkout.expired = true;
-  await linus.POST("/payments/{payment}/approve", { params: { path: { payment: waiting!.payments[0]!.id } } });
+const waitsAboveTheLimits = "Not done: The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for linus@example.org's approval in Approvals.";
+
+test("a payment approved after its page expired isn't paid: the fresh run says so in Coo's activity, the payment stays approved, and the turn that asked pays it in a later run of its own, as Think harder", async () => {
+  const { duva, linus, params, events, requests } = await approvedAfterTheCheckoutExpired(paysWithTheCard("149.00"));
   const after = { payments: (await linus.GET("/payments")).data!.payments, activity: await events(["payments"]), changes: (await linus.GET("/mailboxes/{mailbox}/changes", { params })).data!.changes };
-  checkout.expired = false;
-  await ask("Buy them now.");
+
+  await duva.askAgent("linus@example.org", { harder: true });
 
   expect(after.payments.map(({ state }) => state)).toEqual(["approved"]);
   expect(after.activity[0]).toMatchObject({ type: "paymentNotMade", summary: "Coo went back to pay 149.00 SEK on example.net with Visa, as approved, and couldn't: The checkout had expired, so it couldn't pay.", failed: true });
@@ -442,6 +454,58 @@ test("a payment approved after its page expired isn't paid: the fresh run says s
   expect(after.changes.at(-1)).toMatchObject({ type: "paymentNotMade", amount: "149.00", currency: "SEK", site: "example.net", said: "The checkout had expired, so it couldn't pay." });
   expect(posts(requests)).toEqual(["/pay number=4242424242424242&exp=12%2F29&cvc=123"]);
   expect((await linus.GET("/payments")).data!.payments.map(({ state }) => state)).toEqual(["paid"]);
+  expect((await events(["payments"]))[0]).toMatchObject({ type: "paymentMade", summary: "Coo paid 149.00 SEK on example.net with Visa, as approved, for Coffee beans, 1 kg." });
+});
+
+test("an approved payment pays only for the turn that asked: a run in another conversation, buying the same on the site with the card, asks again, as above the card's limits, and pays nothing", async () => {
+  const { linus, ask, events, requests, coo } = await approvedAfterTheCheckoutExpired(paysWithTheCard("149.00"));
+
+  await linus.DELETE("/mailbox-agent/conversation");
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+
+  expect(lastResult(coo()[3]!.messages)).toBe(waitsAboveTheLimits);
+  expect(posts(requests)).toEqual([]);
+  expect((await linus.GET("/payments")).data!.payments.map(({ state, amount }) => `${state} ${amount}`)).toEqual(["waiting 149.00", "approved 149.00"]);
+  expect((await events(["payments"]))[0]).toMatchObject({ type: "paymentAsked", needsYou: true });
+});
+
+test("an approval left unpaid lapses 24 hours after it was given, and pays nowhere after, so even the turn that asked asks again, and the payments and Coo's activity say it lapsed", async () => {
+  const { duva, agent, requests, coo } = await approvedAfterTheCheckoutExpired(paysWithTheCard("149.00"));
+
+  await duva.clock(new Date(Date.now() + 24 * 60 * 60 * 1000 + 60_000));
+  await duva.askAgent("linus@example.org", { harder: true });
+
+  // Signed in again, as the clock moved past the earlier session.
+  const linus = duva.signIn("linus@example.org");
+  expect(lastResult(coo()[3]!.messages)).toBe(waitsAboveTheLimits);
+  expect(posts(requests)).toEqual([]);
+  expect((await linus.GET("/payments")).data!.payments.map(({ state, amount }) => `${state} ${amount}`)).toEqual(["waiting 149.00", "lapsed 149.00"]);
+  const activity = (await linus.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query: { kinds: ["payments"] } } })).data!.events;
+  expect(activity.map(({ type, summary, needsYou }) => ({ type, summary, needsYou }))).toEqual([
+    { type: "paymentAsked", summary: "Coo asked for approval to pay 149.00 SEK on example.net with Visa, for Coffee beans, 1 kg, above the card's limits.", needsYou: true },
+    { type: "paymentLapsed", summary: "Coo's payment of 149.00 SEK on example.net with Visa went unpaid for 24 hours after it was approved, so its approval lapsed.", needsYou: false },
+    { type: "paymentNotMade", summary: "Coo went back to pay 149.00 SEK on example.net with Visa, as approved, and couldn't: The checkout had expired, so it couldn't pay.", needsYou: false },
+    { type: "paymentDecided", summary: "You approved Coo's payment of 149.00 SEK on example.net.", needsYou: false },
+    { type: "paymentAsked", summary: "Coo asked for approval to pay 149.00 SEK on example.net with Visa, for Coffee beans, 1 kg, above the card's limits.", needsYou: false },
+  ]);
+});
+
+test("payments' answers, listed, approved and declined, carry only the contract's fields", async () => {
+  const { model } = scripted({ coo: [...buysTheBeans(), ...buysTheBeans()], page: [...paysWithTheCard("149.00").slice(0, 1), ...paysWithTheCard("149.00").slice(0, 1)] });
+  const { linus, ask, keep } = await withShop({ model });
+  await keep({ ...visa, ...limits, ...onTheShop });
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  await ask("Buy another bag.");
+  const listed = (await linus.GET("/payments")).data!.payments;
+
+  const approved = (await linus.POST("/payments/{payment}/approve", { params: { path: { payment: listed[0]!.id } } })).data!;
+  const declined = (await linus.POST("/payments/{payment}/decline", { params: { path: { payment: listed[1]!.id } } })).data!;
+  const after = (await linus.GET("/payments")).data!.payments;
+
+  // The properties of the contract's Payment, which takes no others.
+  const contract = new Set(["id", "agent", "state", "card", "cardName", "site", "amount", "currency", "for", "at", "decidedAt", "paidAt", "mailbox", "run", "newSite", "aboveLimits"]);
+  expect([listed.length, approved.state, declined.state, after.length]).toEqual([2, "approved", "declined", 2]);
+  for (const payment of [...listed, approved, declined, ...after]) expect(Object.keys(payment).filter((key) => !contract.has(key))).toEqual([]);
 });
 
 test("a card's sites are given with it, added and removed, each as its domain or a page's address there, never an ending anyone's site is under", async () => {

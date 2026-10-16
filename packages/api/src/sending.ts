@@ -13,7 +13,8 @@
 // alerts to its sponsor. The sender also mails each urgent alert to its sponsor, from Duva, and
 // records that it did, so the inbound handler knows the mail for Duva's own when it arrives. And
 // when a thread set aside in Remind me is due, EventBridge Scheduler hands it to the sender, which
-// brings it back, and when an away message's last day ends, switches it off. Files too large to carry go as linked files (ADR-0034): the sender shares each
+// brings it back, when an away message's last day ends, switches it off, and when an approved
+// payment went unpaid for 24 hours, has it lapse (#183). Files too large to carry go as linked files (ADR-0034): the sender shares each
 // under a new link, lists them after the text, and asks to be handed each when its link ends, to
 // delete it. A draft's signature closes its text, above a forward's quoted original (#157). After
 // every tenth message a human sends, it updates their style note (#156).
@@ -47,6 +48,7 @@ import { copyToOtherMembers, fromStanding } from "./group-mail.ts";
 import { bringBack, findMessage, storedMessage } from "./mail.ts";
 import type { RemindEvent } from "./reminders.ts";
 import { type AwayEndEvent, endAway } from "./away-messages.ts";
+import { lapsePayment, type PaymentLapseEvent } from "./payments.ts";
 import { buildMail, disclosureHeader, mediaTypeOf, parseMail, type Part } from "./mime.ts";
 import { fileKey, uploadedFile, type UploadsBucket } from "./uploads-bucket.ts";
 import type { Downloads } from "./attachments.ts";
@@ -85,7 +87,7 @@ interface Sender {
 }
 
 export function createSender(sender: Sender) {
-  return async (event: DynamoDBStreamEvent | ReleaseEvent | RemindEvent | SendEvent | ExpireEvent | AwayEndEvent): Promise<void> => {
+  return async (event: DynamoDBStreamEvent | ReleaseEvent | RemindEvent | SendEvent | ExpireEvent | AwayEndEvent | PaymentLapseEvent): Promise<void> => {
     // A linked file's link ended.
     if ("expire" in event) {
       await expireFile(sender.table, sender.uploads, event.expire);
@@ -107,6 +109,11 @@ export function createSender(sender: Sender) {
     // An away message's last day ended.
     if ("awayEnds" in event) {
       await endAway(sender.table, event.awayEnds);
+      return;
+    }
+    // An approved payment went unpaid for 24 hours.
+    if ("lapse" in event) {
+      await lapsePayment(sender.table, event.lapse);
       return;
     }
     for (const record of event.Records) {

@@ -258,6 +258,9 @@ export function changeSaid(change: Change, { who, agent, you }: Named, message?:
     case "paymentNotMade":
       if (change.site === undefined) return `${who} went back to pay as approved, and couldn't.`;
       return `${who} went back to pay ${change.amount} ${change.currency} on ${change.site} with ${change.cardName}, as approved, and couldn't: ${change.said}`.replace(/([^.!?])$/, "$1.");
+    case "paymentLapsed":
+      if (change.site === undefined) return `${agent}'s payment went unpaid for 24 hours after it was approved, so its approval lapsed.`;
+      return `${agent}'s payment of ${change.amount} ${change.currency} on ${change.site} with ${change.cardName} went unpaid for 24 hours after it was approved, so its approval lapsed.`;
     case "threadErased":
       return change.actor !== undefined ? `${who} erased a thread for good, emptying Trash.` : "Duva erased a thread for good, after the retention period.";
     case "agentSettingsChanged":

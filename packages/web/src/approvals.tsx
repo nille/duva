@@ -30,10 +30,10 @@ type Draft = components["schemas"]["Draft"];
 type Agent = components["schemas"]["Agent"];
 type Payment = components["schemas"]["Payment"];
 
-/** A payment of Coo's waiting for the human (ADR-0039), and how they decided it here, if they did. */
+/** A payment of Coo's waiting for the human (ADR-0039), and how they decided it here, if they did, or that its approval lapsed since (#183). */
 interface PaymentEntry {
   payment: Payment;
-  decided?: "approved" | "declined";
+  decided?: "approved" | "declined" | "lapsed";
 }
 
 /** An approval the view shows: waiting, or decided while the page was open. */
@@ -202,7 +202,11 @@ export function Approvals({
     if (response?.status === 401) return onSignedOut();
     if (data === undefined) return setPayments((current) => current ?? []);
     const waiting = data.payments.filter(({ state }) => state === "waiting");
-    setPayments((current = []) => [...waiting.map((payment) => ({ payment })), ...current.filter(({ decided, payment }) => decided !== undefined && !waiting.some(({ id }) => id === payment.id))]);
+    const lapsed = new Set(data.payments.filter(({ state }) => state === "lapsed").map(({ id }) => id));
+    setPayments((current = []) => [
+      ...waiting.map((payment) => ({ payment })),
+      ...current.filter(({ decided, payment }) => decided !== undefined && !waiting.some(({ id }) => id === payment.id)).map((entry) => (lapsed.has(entry.payment.id) ? { ...entry, decided: "lapsed" as const } : entry)),
+    ]);
   }, [client, onSignedOut]);
 
   // A list Duva can't give now shows none, and is read again with the next change.
@@ -472,7 +476,7 @@ function rowOf(item: Item, agents: Record<string, string>, outcomes: Record<stri
   if (item.kind === "payment") {
     const { payment, decided } = item.entry;
     const pay = strings.approvals.payment;
-    const state = decided === undefined ? undefined : { tone: decided === "approved" ? ("done" as const) : ("rejected" as const), headline: decided === "approved" ? pay.approvedRow : pay.declinedRow };
+    const state = decided === undefined ? undefined : { tone: decided === "approved" ? ("done" as const) : ("rejected" as const), headline: { approved: pay.approvedRow, declined: pay.declinedRow, lapsed: pay.lapsedRow }[decided] };
     return { agent: agents[payment.agent] ?? anAgent, agentId: payment.agent, at: payment.at, subject: pay.title(payment.amount, payment.currency, payment.site), line: pay.line(payment.cardName, payment.for), state, fresh: false };
   }
   const { agent, draft } = item.send;
@@ -664,7 +668,7 @@ function PaymentGalley({
           </div>
         ) : (
           <p className={`payment-decided payment-decided-${decided}`} role="status">
-            {decided === "approved" ? copy.approved : copy.declined}
+            {copy[decided]}
           </p>
         )}
         {failed !== undefined && (

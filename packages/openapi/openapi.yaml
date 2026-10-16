@@ -5012,7 +5012,8 @@ paths:
         within the limits you set on it. A payment above them, or on another
         site, waits here, with its site, amount, card and what it is for,
         until you approve or decline it. Paid ones show with when, and
-        approved ones until a run pays them. Only you see your Coo's payments.
+        approved ones until a run pays them, or they lapse, unpaid 24 hours
+        after you approved them. Only you see your Coo's payments.
       x-cli-command: payments list
       responses:
         "200":
@@ -5032,11 +5033,13 @@ paths:
       description: >
         A fresh browsing run of your Coo's goes back to the page where the
         payment waited and pays it, outside the card's limits, once, as would
-        any later run that pays its amount on the site with the card. It still
-        counts toward the card's month. A payment on a site the card didn't
-        name adds the site to the card, so it pays there from then on. If the
-        run can't pay, as when the page expired, Coo's activity says why.
-        Recorded in the mailbox's change feed under you.
+        a later run of the turn or task that asked for it, paying its amount on
+        the site with the card. Any other run asks again. It still counts
+        toward the card's month. A payment on a site the card didn't name adds
+        the site to the card, so it pays there from then on. If the run can't
+        pay, as when the page expired, Coo's activity says why. Left unpaid for
+        24 hours, the approval lapses, and pays nowhere. Recorded in the
+        mailbox's change feed under you.
       x-cli-command: payments approve
       parameters:
         - $ref: "#/components/parameters/Payment"
@@ -6475,6 +6478,7 @@ components:
         - $ref: "#/components/schemas/PaymentAsked"
         - $ref: "#/components/schemas/PaymentDecided"
         - $ref: "#/components/schemas/PaymentNotMade"
+        - $ref: "#/components/schemas/PaymentLapsed"
       discriminator:
         propertyName: type
         mapping:
@@ -6530,6 +6534,7 @@ components:
           paymentAsked: "#/components/schemas/PaymentAsked"
           paymentDecided: "#/components/schemas/PaymentDecided"
           paymentNotMade: "#/components/schemas/PaymentNotMade"
+          paymentLapsed: "#/components/schemas/PaymentLapsed"
     MessageReceived:
       type: object
       additionalProperties: false
@@ -7230,8 +7235,8 @@ components:
               description: >-
                 With followedUp, how what waited was decided: a send sent,
                 rejected, or failed, or a payment approved, declined, paid
-                once a later run paid it, or unpaid, when the run that went back
-                to pay it couldn't.
+                once a run paid it as approved, or unpaid, when the run that
+                went back to pay it couldn't.
     TaskEnded:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -11445,10 +11450,12 @@ components:
           description: The part, to type into the page and never show the model.
     PaymentState:
       type: string
-      enum: [waiting, approved, paid, declined]
+      enum: [waiting, approved, paid, declined, lapsed]
       description: >-
-        waiting, above the card's limits and waiting for its human; approved,
-        until a run pays it; paid; declined by its human.
+        waiting, above the card's limits or on a site the card doesn't name,
+        for its human; approved, until a run pays it; paid; declined by its
+        human; lapsed, approved and left unpaid for 24 hours, so it pays
+        nowhere.
     Payment:
       type: object
       additionalProperties: false
@@ -11606,8 +11613,8 @@ components:
           description: >-
             The fresh browsing run that went back to pay a payment its human
             approved couldn't pay it, as when the page expired. The payment
-            stays approved, so a later run that pays it there with the card
-            still does.
+            stays approved for a later run of the turn or task that asked for
+            it, until it lapses 24 hours after it was approved.
           properties:
             type:
               type: string
@@ -11629,6 +11636,33 @@ components:
             said:
               type: string
               description: Why, as the run said it, or why it couldn't run.
+    PaymentLapsed:
+      allOf:
+        - $ref: "#/components/schemas/ChangeBase"
+        - type: object
+          required: [type, agent, payment, cardName, site, amount, currency, for]
+          description: >-
+            A payment its human approved went unpaid for 24 hours, so the
+            approval lapsed, and it pays nowhere. A run that still needs to pay
+            asks again. Duva makes it by itself.
+          properties:
+            type:
+              type: string
+              const: paymentLapsed
+            agent:
+              type: string
+            payment:
+              type: string
+            cardName:
+              type: string
+            site:
+              type: string
+            amount:
+              $ref: "#/components/schemas/Amount"
+            currency:
+              $ref: "#/components/schemas/Currency"
+            for:
+              type: string
     MailboxAgentPayments:
       type: boolean
       description: >-

@@ -752,7 +752,8 @@ function handler(event) {
     // Unpausing an agent, and raising its limits, hand the sender what waits, without waiting.
     handler.addEnvironment(environmentVariables.senderFunction, sender.functionArn);
     sender.grantInvoke(handler);
-    // Setting a thread aside in Remind me schedules the sender to bring it back, in the same group with the same role.
+    // Setting a thread aside in Remind me schedules the sender to bring it back, and approving a payment
+    // schedules it to let the approval lapse (#183), in the same group with the same role.
     senderSchedules.grants.writeSchedules(handler);
     handler.addToRolePolicy(
       new PolicyStatement({ actions: ["iam:PassRole"], resources: [schedulerRole.roleArn], conditions: { StringEquals: { "iam:PassedToService": "scheduler.amazonaws.com" } } }),

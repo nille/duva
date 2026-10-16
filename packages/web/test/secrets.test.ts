@@ -136,7 +136,7 @@ test("a human names the sites a card pays on as they add it, then adds and remov
   await visa.getByText("None yet, so each payment waits for you.").waitFor(wait);
 });
 
-test("a payment above a card's limits waits in Approvals with its amount, site and card, and Coo's bubble says so; approved, Coo goes back to the page, and its bubble says it couldn't pay once the page expired", budget, async () => {
+test("a payment above a card's limits waits in Approvals with its amount, site and card, and Coo's bubble says so; approved, Coo goes back to the page, its bubble says it couldn't pay once the page expired, and Approvals says the approval lapsed 24 hours on", budget, async () => {
   const model = scripted({
     coo: [() => [use("browse", { url: "https://shop.example.net/checkout", goal: "Buy the coffee beans.", secrets: ["Visa"] })], () => [{ text: "The payment waits for your approval." }]],
     page: [
@@ -144,7 +144,7 @@ test("a payment above a card's limits waits in Approvals with its amount, site a
       () => [use("finish", { done: false, said: "The checkout had expired" })],
     ],
   });
-  const { page, signIn, duva, grace, mailbox } = await withMailbox({ model });
+  const { page, signIn, duva, grace, mailbox, hide, show } = await withMailbox({ model, hiddenPollInterval: 600_000 });
   let expired = false;
   await duva.webServer("shop.example.net", {
     answer: () =>
@@ -174,4 +174,17 @@ test("a payment above a card's limits waits in Approvals with its amount, site a
 
   await page.locator(".coo-says").getByRole("link", { name: "I couldn't pay 149.00 SEK on example.net as you approved: The checkout had expired." }).waitFor(wait);
   expect((await grace.GET("/payments")).data!.payments.map(({ state }) => state)).toEqual(["approved"]);
+
+  // A day on, with Approvals still open. The tab is hidden while both clocks move, so no read
+  // reaches Duva with a session the browser's clock hasn't renewed, and once the read that was due
+  // has passed, the next is ten minutes away.
+  await hide();
+  await page.waitForTimeout(2_000);
+  const dayOn = new Date(Date.now() + 24 * 60 * 60 * 1000 + 60_000);
+  await duva.clock(dayOn);
+  await page.clock.setSystemTime(dayOn);
+  await show();
+
+  await galley.getByText("Lapsed. It went unpaid for 24 hours after you approved it. Ask Coo again if you still want it.").waitFor(wait);
+  expect(await row.locator(".queue-state").innerText()).toBe("Lapsed");
 });

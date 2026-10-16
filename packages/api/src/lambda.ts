@@ -25,6 +25,7 @@ import { lambdaWaitingSends } from "./limits.ts";
 import { SchedulerClient } from "@aws-sdk/client-scheduler";
 import { eventBridgeReminders } from "./reminders.ts";
 import { eventBridgeAwayEnds } from "./away-messages.ts";
+import { eventBridgePaymentLapses } from "./payments.ts";
 import { X509Certificate } from "node:crypto";
 import { markRoots } from "./mark-roots.ts";
 import { s3HostedLogos } from "./own-logos.ts";
@@ -74,6 +75,7 @@ export const handler = createApi({
   waitingSends: lambdaWaitingSends(lambda, required(environmentVariables.senderFunction)),
   reminders: eventBridgeReminders(scheduler, scheduleGroup),
   awayEnds: eventBridgeAwayEnds(scheduler, scheduleGroup),
+  paymentLapses: eventBridgePaymentLapses(scheduler, scheduleGroup),
   downloads: { url: required(environmentVariables.downloadUrl), lifetime: downloadLinkLifetime },
   hostedLogos: s3HostedLogos(
     new S3Client({}),

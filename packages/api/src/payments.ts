@@ -3,19 +3,22 @@
 // per-payment and per-month limits they set, while the organization lets mailbox agents pay; a card
 // without limits never pays. Above a limit, or on another site, the payment waits in its human's
 // Approvals, keeping the page and what the run was given, and once they approve it, which adds a new
-// site to the card, a fresh run goes back to the page and pays it (payment-runs.ts), as would the
-// next run that pays its amount on the site with the card, once. Each payment is recorded with the
-// run that made it, a turn of Ask Coo or a label's task, in the same transaction as the card's
-// month and the change in the mailbox's feed that Coo's activity and bubble show, so a run that
-// runs again, as a retried task or Think harder, never pays twice.
+// site to the card, a fresh run goes back to the page and pays it (payment-runs.ts), as would a
+// later run of the turn or task that asked, once. No other run pays it, and left unpaid for 24
+// hours, the approval lapses, so a leftover approval never pays for a run that didn't ask (#183).
+// Each payment is recorded with the run that made it, a turn of Ask Coo or a label's task, in the
+// same transaction as the card's month and the change in the mailbox's feed that Coo's activity and
+// bubble show, so a run that runs again, as a retried task or Think harder, never pays twice.
 import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
+import type { SchedulerClient } from "@aws-sdk/client-scheduler";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
+import { scheduleOnce, type ScheduleGroup } from "./limits.ts";
 import { type OperationHandler, refusal } from "./operation-handler.ts";
-import { actorKey, type Agent, mailboxFeed } from "./organization.ts";
+import { actorKey, type Agent, duva, mailboxFeed } from "./organization.ts";
 import type { RunIdentity } from "./run-tokens.ts";
 import {
   amountOf,
@@ -73,7 +76,37 @@ const runPaymentKey = (human: string, run: RunIdentity, card: string, site: stri
   [sk]: `payment-run#${run.task === undefined ? `turn#${run.turn}` : `task#${run.task}`}#${card}#${site}`,
 });
 
-export const paymentOf = ({ human: _, amount, wayBack: __, wentBackAt: ___, ...payment }: StoredPayment): Payment => ({ ...payment, amount: amountOf(amount) });
+/** How long an approval lasts unpaid: 24 hours after it was given, it lapses (#183). */
+const approvalLasts = 24 * 60 * 60 * 1000;
+
+/** Now less 24 hours: an approval given at or before it has lapsed. */
+const lapseLine = () => new Date(Date.now() - approvalLasts).toISOString();
+
+/** The payment's state, lapsed once it was approved 24 hours ago and not paid, even before the sender has it lapse. */
+const stateOf = ({ state, decidedAt }: StoredPayment): Payment["state"] => (state === "approved" && Date.parse(decidedAt!) + approvalLasts <= Date.now() ? "lapsed" : state);
+
+/** The payment as the contract gives it, with none of what only Duva keeps. */
+export const paymentOf = (stored: StoredPayment): Payment => {
+  const { id, agent, card, cardName, site, amount, currency, for: what, at, decidedAt, paidAt, mailbox, run, newSite, aboveLimits } = stored;
+  return {
+    id,
+    agent,
+    state: stateOf(stored),
+    card,
+    cardName,
+    site,
+    amount: amountOf(amount),
+    currency,
+    for: what,
+    at,
+    ...(decidedAt !== undefined && { decidedAt }),
+    ...(paidAt !== undefined && { paidAt }),
+    mailbox,
+    run,
+    ...(newSite && { newSite }),
+    ...(aboveLimits && { aboveLimits }),
+  };
+};
 
 /** The run as the secret's history and the payment name it. */
 export const runOf = ({ turn, task, mailbox, thread }: RunIdentity): SecretRun => (task === undefined ? { turn: turn! } : { task, mailbox, ...(thread !== undefined && { thread }) });
@@ -100,7 +133,7 @@ export async function findPayment(table: Table, human: string, id: string): Prom
 /**
  * Takes the approved payment's way back, once: the payment as it was, with its way back, which it
  * keeps no longer, unless it waited from before payments kept one. Undefined if it isn't approved,
- * or a run went back for it, or paid it, already.
+ * or a run went back for it, or paid it, already, or the approval lapsed.
  */
 export async function takeWayBack(table: Table, human: string, id: string): Promise<StoredPayment | undefined> {
   try {
@@ -109,9 +142,9 @@ export async function takeWayBack(table: Table, human: string, id: string): Prom
         TableName: table.name,
         Key: paymentKey(human, id),
         UpdateExpression: "SET wentBackAt = :at REMOVE wayBack",
-        ConditionExpression: "#state = :approved AND attribute_not_exists(wentBackAt)",
+        ConditionExpression: "#state = :approved AND attribute_not_exists(wentBackAt) AND decidedAt > :lapsed",
         ExpressionAttributeNames: { "#state": "state" },
-        ExpressionAttributeValues: { ":approved": "approved", ":at": new Date().toISOString() },
+        ExpressionAttributeValues: { ":approved": "approved", ":at": new Date().toISOString(), ":lapsed": lapseLine() },
         ReturnValues: "ALL_OLD",
       }),
     );
@@ -127,6 +160,56 @@ export const stillApproved = (table: Table, { human, id }: Pick<StoredPayment, "
   ConditionCheck: { TableName: table.name, Key: paymentKey(human, id), ConditionExpression: "#state = :approved", ExpressionAttributeNames: { "#state": "state" }, ExpressionAttributeValues: { ":approved": "approved" } },
 });
 
+/** What EventBridge Scheduler hands the sender when a payment's approval has lasted its 24 hours. */
+export interface PaymentLapseEvent {
+  lapse: { human: string; payment: string };
+}
+
+/** Has the sender let an approved payment lapse once its approval has lasted. EventBridge Scheduler's, or a stand-in in tests. */
+export interface PaymentLapses {
+  lapseAt(lapse: PaymentLapseEvent["lapse"], at: Date): Promise<void>;
+}
+
+/** One-time schedules in the sender's schedule group, one per payment approved, named by the payment. */
+export function eventBridgePaymentLapses(scheduler: SchedulerClient, schedule: ScheduleGroup): PaymentLapses {
+  return {
+    lapseAt: (lapse, at) => scheduleOnce(scheduler, schedule, { name: (second) => `lapse-${lapse.payment}-${second}`, at, input: { lapse } satisfies PaymentLapseEvent }),
+  };
+}
+
+/**
+ * Has the approved payment, still unpaid, lapse: it pays nowhere after, and its way back goes,
+ * recorded in its mailbox's feed by Duva, which Coo's activity shows. One paid meanwhile, or gone
+ * with its card, stays as it is, and so does one whose 24 hours aren't over, as when the schedule
+ * of an approval that lost a race to another ran first.
+ */
+export async function lapsePayment(table: Table, { human, payment: id }: PaymentLapseEvent["lapse"]): Promise<void> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: paymentKey(human, id), ConsistentRead: true }));
+  const payment = Item as StoredPayment | undefined;
+  if (payment?.state !== "approved") return;
+  try {
+    await recordChanges(table, mailboxFeed(payment.mailbox), {
+      by: duva,
+      changes: [{ type: "paymentLapsed", agent: payment.agent, payment: id, cardName: payment.cardName, site: payment.site, amount: amountOf(payment.amount), currency: payment.currency, for: payment.for }],
+      items: [
+        {
+          Update: {
+            TableName: table.name,
+            Key: paymentKey(human, id),
+            UpdateExpression: "SET #state = :lapsed REMOVE wayBack",
+            ConditionExpression: "#state = :approved AND decidedAt <= :line",
+            ExpressionAttributeNames: { "#state": "state" },
+            ExpressionAttributeValues: { ":lapsed": "lapsed", ":approved": "approved", ":line": lapseLine() },
+          },
+        },
+      ],
+    });
+  } catch (error) {
+    // Paid meanwhile, or not yet due. recordChanges gives the items' cancellation reasons after the counter's and the one change's.
+    if (!(error instanceof TransactionCanceledException) || error.CancellationReasons?.[2]?.Code !== "ConditionalCheckFailed") throw error;
+  }
+}
+
 /** The card's payments not yet paid or declined, which go with the card. */
 export async function openPayments(table: Table, card: StoredSecret): Promise<Record<string, unknown>[]> {
   return (await storedPayments(table, card.human)).filter(({ card: of, state }) => of === card.id && (state === "waiting" || state === "approved")).map((payment) => paymentKey(card.human, payment.id));
@@ -138,9 +221,10 @@ export type Paying = { paid: true } | { waiting: Payment } | { refused: string }
 /**
  * Pays with the card, for the run, on the site, as a part of it is typed into the page there, at the
  * address the browser reports: once per run on a site, on the card's sites within its limits, or as
- * its human approved. A part typed again in the same session pays nothing more. A payment that waits
- * keeps its way back: the page, and what the run was `asked` with. `organizationPays` is whether the
- * organization lets mailbox agents pay.
+ * its human approved the payment this turn or task asked for, until the approval lapses. A part
+ * typed again in the same session pays nothing more. A payment that waits keeps its way back: the
+ * page, and what the run was `asked` with. `organizationPays` is whether the organization lets
+ * mailbox agents pay.
  */
 export async function payWith(
   table: Table,
@@ -172,9 +256,9 @@ export async function payWith(
     if (earlier?.state === "paid") return { refused: `This run paid ${amountOf(earlier.amount)} ${earlier.currency} on ${site} with ${card.name} already, so it doesn't pay again.` };
   }
   if (!organizationPays) return { refused: "An admin turned paying off for the organization, so no card pays." };
-  // The run's own approved payment first, as a run that goes back for it pays it, then any approved for the same.
-  const approvedFor = (payment: StoredPayment | undefined) => payment?.state === "approved" && payment.card === card.id && payment.site === site && payment.currency === currency && payment.amount === amount;
-  const approved = !onSite ? undefined : approvedFor(claimed) ? claimed : (await storedPayments(table, human)).find(approvedFor);
+  // Only the turn's or task's own approved payment, which a run that goes back for it pays as that
+  // turn or task: an approval left from another, as when its page expired, asks again (#183).
+  const approved = onSite && claimed !== undefined && stateOf(claimed) === "approved" && claimed.card === card.id && claimed.site === site && claimed.currency === currency && claimed.amount === amount ? claimed : undefined;
   const limits = card.limits;
   if (approved === undefined && limits === undefined) return { refused: `${card.name} has no limits set, so it doesn't pay. Its human sets them in Settings, under Secrets.` };
   const record = (payment: StoredPayment, items: TransactItem[]) =>
@@ -216,18 +300,17 @@ export async function payWith(
               TableName: table.name,
               Key: paymentKey(human, approved.id),
               UpdateExpression: "SET #state = :paid, paidAt = :at REMOVE wayBack",
-              ConditionExpression: "#state = :approved",
+              ConditionExpression: "#state = :approved AND decidedAt > :lapsed",
               ExpressionAttributeNames: { "#state": "state" },
-              ExpressionAttributeValues: { ":paid": "paid", ":at": at, ":approved": "approved" },
+              ExpressionAttributeValues: { ":paid": "paid", ":at": at, ":approved": "approved", ":lapsed": lapseLine() },
             },
           },
           month(),
         ]);
       } catch (error) {
-        // Another run paid it meanwhile: the payment is the item after the claim.
-        if (error instanceof TransactionCanceledException && error.CancellationReasons?.[3]?.Code === "ConditionalCheckFailed") {
-          return { refused: `Another run paid this payment of ${amountOf(amount)} ${currency} on ${site} meanwhile, so it isn't paid again. Finish without paying.` };
-        }
+        // Another run of the turn or task paid it meanwhile, or the approval lapsed, so it goes as
+        // that left it: the payment is the item after the claim.
+        if (error instanceof TransactionCanceledException && error.CancellationReasons?.[3]?.Code === "ConditionalCheckFailed") return payWith(table, paying);
         throw error;
       }
       return { paid: true };
@@ -267,11 +350,11 @@ export const listPayments: OperationHandler = async (_event, { table }, actor) =
  * Approves or declines the payment waiting for the human, recorded in its mailbox's feed under them.
  * Approving a payment on a site its card doesn't name adds the site to the card, and the change has
  * the task giver hand the payment to a fresh run, which goes back and pays it (payment-runs.ts).
- * Declining drops its way back.
+ * The approval lapses 24 hours on, if nothing paid it. Declining drops its way back.
  */
 const decide =
   (approved: boolean): OperationHandler =>
-  async (event, { table }, actor) => {
+  async (event, { table, paymentLapses }, actor) => {
     if (actor?.kind !== "human") return othersRefused();
     const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: paymentKey(actor.id, event.pathParameters?.payment ?? ""), ConsistentRead: true }));
     const payment = Item as StoredPayment | undefined;
@@ -282,6 +365,9 @@ const decide =
     const state = approved ? "approved" : "declined";
     const card = approved && payment.newSite ? await findSecret(table, actor.id, payment.card) : undefined;
     const siteAdded = card !== undefined && !paysOn(card, payment.site);
+    // Scheduled first, so no approval lacks the schedule that has it lapse. One for a payment decided
+    // otherwise meanwhile finds it declined, or paid, and does nothing.
+    if (approved) await paymentLapses.lapseAt({ human: actor.id, payment: payment.id }, new Date(Date.parse(at) + approvalLasts));
     try {
       await recordChanges(table, mailboxFeed(payment.mailbox), {
         by: actor.id,

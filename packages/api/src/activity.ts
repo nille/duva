@@ -83,6 +83,7 @@ const kinds: Partial<Record<Change["type"], Kind>> = {
   paymentAsked: "payments",
   paymentDecided: "payments",
   paymentNotMade: "payments",
+  paymentLapsed: "payments",
 };
 const allKinds: Kind[] = ["conversations", "tasks", "draftsAndSends", "approvals", "payments", "organizing", "screening", "unsubscribes", "pausesAndLimits", "alerts", "setup"];
 

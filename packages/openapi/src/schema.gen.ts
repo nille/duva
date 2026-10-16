@@ -2580,7 +2580,7 @@ export interface paths {
         };
         /**
          * List your Coo's payments, newest first, those waiting for your approval among them.
-         * @description Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.
+         * @description Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them, or they lapse, unpaid 24 hours after you approved them. Only you see your Coo's payments.
          */
         get: operations["listPayments"];
         put?: never;
@@ -2602,7 +2602,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a payment waiting for you, so Coo goes back to the page and pays it.
-         * @description A fresh browsing run of your Coo's goes back to the page where the payment waited and pays it, outside the card's limits, once, as would any later run that pays its amount on the site with the card. It still counts toward the card's month. A payment on a site the card didn't name adds the site to the card, so it pays there from then on. If the run can't pay, as when the page expired, Coo's activity says why. Recorded in the mailbox's change feed under you.
+         * @description A fresh browsing run of your Coo's goes back to the page where the payment waited and pays it, outside the card's limits, once, as would a later run of the turn or task that asked for it, paying its amount on the site with the card. Any other run asks again. It still counts toward the card's month. A payment on a site the card didn't name adds the site to the card, so it pays there from then on. If the run can't pay, as when the page expired, Coo's activity says why. Left unpaid for 24 hours, the approval lapses, and pays nowhere. Recorded in the mailbox's change feed under you.
          */
         post: operations["approvePayment"];
         delete?: never;
@@ -3348,7 +3348,7 @@ export interface components {
             position: number;
         };
         /** @description A change in a mailbox. */
-        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailToCoo"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"] | components["schemas"]["SignatureChanged"] | components["schemas"]["PaymentMade"] | components["schemas"]["PaymentAsked"] | components["schemas"]["PaymentDecided"] | components["schemas"]["PaymentNotMade"];
+        MailboxChange: components["schemas"]["MessageReceived"] | components["schemas"]["DraftWritten"] | components["schemas"]["DraftChanged"] | components["schemas"]["DraftDeleted"] | components["schemas"]["SendAsked"] | components["schemas"]["ApprovalAsked"] | components["schemas"]["ApprovalWithdrawn"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["ApprovalUndone"] | components["schemas"]["MessageSent"] | components["schemas"]["SendWaitingForLimit"] | components["schemas"]["SentNow"] | components["schemas"]["SendFailed"] | components["schemas"]["SendUnclear"] | components["schemas"]["FeedbackReceived"] | components["schemas"]["ThreadRead"] | components["schemas"]["ThreadUnread"] | components["schemas"]["ThreadLabelsChanged"] | components["schemas"]["ReminderSet"] | components["schemas"]["ReminderCancelled"] | components["schemas"]["ThreadBack"] | components["schemas"]["LabelCreated"] | components["schemas"]["LabelRenamed"] | components["schemas"]["LabelDeleted"] | components["schemas"]["ThreadErased"] | components["schemas"]["AgentSettingsChanged"] | components["schemas"]["AgentPaused"] | components["schemas"]["AgentUnpaused"] | components["schemas"]["SenderScreened"] | components["schemas"]["ScreenerSwitched"] | components["schemas"]["ScreenedSenderRemoved"] | components["schemas"]["UnsubscribeAttempted"] | components["schemas"]["SenderDeliverySet"] | components["schemas"]["SenderDeliveryRemoved"] | components["schemas"]["MessageDropped"] | components["schemas"]["LabelPromptSet"] | components["schemas"]["LabelPromptRemoved"] | components["schemas"]["TaskGiven"] | components["schemas"]["TaskStarted"] | components["schemas"]["TaskEnded"] | components["schemas"]["AgentHandedOver"] | components["schemas"]["ConversationTurnTaken"] | components["schemas"]["MailToCoo"] | components["schemas"]["MailboxAgentsMerged"] | components["schemas"]["LinkedFileDownloaded"] | components["schemas"]["SharingStopped"] | components["schemas"]["AwayMessageSent"] | components["schemas"]["SignatureChanged"] | components["schemas"]["PaymentMade"] | components["schemas"]["PaymentAsked"] | components["schemas"]["PaymentDecided"] | components["schemas"]["PaymentNotMade"] | components["schemas"]["PaymentLapsed"];
         /** @description Mail arrived. No actor made this change, so it names none. */
         MessageReceived: {
             /** @description The change's position in the mailbox's feed, counting from 1. */
@@ -3895,7 +3895,7 @@ export interface components {
             /** @description With followedUp, the ID of the payment that waited. */
             payment?: string;
             /**
-             * @description With followedUp, how what waited was decided: a send sent, rejected, or failed, or a payment approved, declined, paid once a later run paid it, or unpaid, when the run that went back to pay it couldn't.
+             * @description With followedUp, how what waited was decided: a send sent, rejected, or failed, or a payment approved, declined, paid once a run paid it as approved, or unpaid, when the run that went back to pay it couldn't.
              * @enum {string}
              */
             outcome?: "sent" | "rejected" | "failed" | "approved" | "declined" | "paid" | "unpaid";
@@ -6483,10 +6483,10 @@ export interface components {
             value: string;
         };
         /**
-         * @description waiting, above the card's limits and waiting for its human; approved, until a run pays it; paid; declined by its human.
+         * @description waiting, above the card's limits or on a site the card doesn't name, for its human; approved, until a run pays it; paid; declined by its human; lapsed, approved and left unpaid for 24 hours, so it pays nowhere.
          * @enum {string}
          */
-        PaymentState: "waiting" | "approved" | "paid" | "declined";
+        PaymentState: "waiting" | "approved" | "paid" | "declined" | "lapsed";
         /** @description A payment Coo made, or one waiting for its human's approval. */
         Payment: {
             id: string;
@@ -6623,6 +6623,23 @@ export interface components {
              * @enum {string}
              */
             type: "paymentNotMade";
+        };
+        PaymentLapsed: components["schemas"]["ChangeBase"] & {
+            /** @constant */
+            type: "paymentLapsed";
+            agent: string;
+            payment: string;
+            cardName: string;
+            site: string;
+            amount: components["schemas"]["Amount"];
+            currency: components["schemas"]["Currency"];
+            for: string;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "paymentLapsed";
         };
         /** @description Whether the mailbox agents may pay with their humans' cards while they browse, each card only on its sites, within the per-payment and per-month limits its human set, and elsewhere or above them only once its human approves. A card without limits never pays. On by default; off, no card pays. */
         MailboxAgentPayments: boolean;

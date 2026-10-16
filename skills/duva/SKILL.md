@@ -1352,13 +1352,13 @@ An approved send waits the organization's undo window, undoWindowSeconds, before
 
 List your Coo's payments, newest first, those waiting for your approval among them.
 
-Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them. Only you see your Coo's payments.
+Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them, or they lapse, unpaid 24 hours after you approved them. Only you see your Coo's payments.
 
 ## duva payments approve
 
 Approve a payment waiting for you, so Coo goes back to the page and pays it.
 
-A fresh browsing run of your Coo's goes back to the page where the payment waited and pays it, outside the card's limits, once, as would any later run that pays its amount on the site with the card. It still counts toward the card's month. A payment on a site the card didn't name adds the site to the card, so it pays there from then on. If the run can't pay, as when the page expired, Coo's activity says why. Recorded in the mailbox's change feed under you.
+A fresh browsing run of your Coo's goes back to the page where the payment waited and pays it, outside the card's limits, once, as would a later run of the turn or task that asked for it, paying its amount on the site with the card. Any other run asks again. It still counts toward the card's month. A payment on a site the card didn't name adds the site to the card, so it pays there from then on. If the run can't pay, as when the page expired, Coo's activity says why. Left unpaid for 24 hours, the approval lapses, and pays nowhere. Recorded in the mailbox's change feed under you.
 
 - `--payment` (required): The payment's ID.
 

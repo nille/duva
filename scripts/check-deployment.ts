@@ -18,7 +18,7 @@
 // of SES's waits in the feedback Lambda's failure queue; nothing but IAM may invoke search, which runs at 10,240 MB
 // on x64, and Nova Lite translates where search calls it; every mailbox's search index is backfilled, naming any whose backfill is stuck, none has held
 // erased mail for more than a day, and no indexer task waits in its failure queue; nothing but IAM
-// may invoke the sender, and no schedule for sends that wait for an agent's limits, or for threads set aside in Remind me, is overdue; Ask your agent's
+// may invoke the sender, and no schedule for sends that wait for an agent's limits, for threads set aside in Remind me, or for approved payments to lapse, is overdue; Ask your agent's
 // turns reach the conversation Lambda only through the web app's domain, the mailbox agents' AgentCore Runtime is ready and takes only IAM calls, their unsubscribe browser is ready on the public network and records nothing, the inbound Lambda is given the task runner, only IAM invokes the task runner, which retries no run, and no task is stuck working, every
 // human's mailbox has its mailbox agent, no agent owns a mailbox, a first admin signing in on the organization's domains has a mailbox there, the humans' secrets are sealed with the stack's own rotating key the mailbox agents' role can't use, Claude answers from eu-central-1 through the eu profile, and each suggestion model answers where Duva calls it;
 // the stack, what Resource Groups Tagging finds of it, the humans' browser profiles, the domains' identities, the runtime's log group and the gateway to Web Search carry project=duva; and with
@@ -608,7 +608,7 @@ await check("listing alerts without credentials answers 401", async () => expect
 await check("marking alerts seen without credentials answers 401", async () =>
   expectStatus(await fetch(`${apiUrl}/alerts/seen`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"alerts":["x"]}' }), 401),
 );
-await check("no schedule for sends that wait for an agent's limits, or for a thread due back from Remind me, is more than an hour overdue", async () => {
+await check("no schedule for sends that wait for an agent's limits, for a thread due back from Remind me, or for an approved payment to lapse, is more than an hour overdue", async () => {
   const group = await stackResource("AWS::Scheduler::ScheduleGroup", "SenderSchedules");
   if (group === undefined) return "the schedule group isn't in the stack";
   const overdue: string[] = [];

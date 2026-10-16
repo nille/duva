@@ -12,6 +12,7 @@ import type { Unsubscriber } from "./unsubscriber.ts";
 import type { WaitingSends } from "./limits.ts";
 import type { Reminders } from "./reminders.ts";
 import type { AwayEnds } from "./away-messages.ts";
+import type { PaymentLapses } from "./payments.ts";
 import type { HostedLogos } from "./own-logos.ts";
 import type { TaskRunner } from "./tasks.ts";
 import type { Embedder } from "./titan.ts";
@@ -67,6 +68,8 @@ export interface Deployment {
   reminders: Reminders;
   /** Has the sender switch each away message off when its last day ends. */
   awayEnds: AwayEnds;
+  /** Has the sender let each approved payment lapse 24 hours on, if nothing paid it (#183). */
+  paymentLapses: PaymentLapses;
   /** Serves the organization's own logos, and the mark certificates attached to them. */
   hostedLogos: HostedLogos;
   /** Runs the tasks labels' prompts give mailbox agents, as unpausing one hands them over again. */

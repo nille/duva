@@ -59,6 +59,7 @@ import { giveMailboxAgents, mailboxAgentName, mailboxAgentSettings, turnPrefix }
 import { giveFirstAdminMailbox } from "../src/mailboxes.ts";
 import type { ReminderDue } from "../src/reminders.ts";
 import type { AwayEnds } from "../src/away-messages.ts";
+import type { PaymentLapses } from "../src/payments.ts";
 import { createSender } from "../src/sending.ts";
 import type { Suggester } from "../src/suggestions.ts";
 import type { SuppressionReason } from "../src/suppression.ts";
@@ -489,8 +490,8 @@ export async function startDuva({
   };
   const searcher = createSearcher(lanceSearch({ uri: indexes, embedder: titan, translator: recordedNova() }));
   // EventBridge Scheduler's one-time schedules, each invoking the sender at a time, with an agent
-  // whose sends wait, a draft whose undo window is over, a thread due back from Remind me, or an
-  // away message whose last day ended.
+  // whose sends wait, a draft whose undo window is over, a thread due back from Remind me, an
+  // away message whose last day ended, or a payment whose approval has lasted.
   const schedules: { event: Parameters<typeof sender>[0]; at: Date }[] = [];
   const sender = createSender({
     table,
@@ -514,6 +515,7 @@ export async function startDuva({
   });
   const reminders = { remindAt: async (due: ReminderDue) => void schedules.push({ event: { remind: due }, at: new Date(due.at) }) };
   const awayEnds: AwayEnds = { endAt: async (end, at) => void schedules.push({ event: { awayEnds: end }, at }) };
+  const paymentLapses: PaymentLapses = { lapseAt: async (lapse, at) => void schedules.push({ event: { lapse }, at }) };
   const stream = tableStream(database, streamArn, [
     { filter: senderFilter, handler: sender, retries: senderRetries, invocations: senderInvocations },
     { filter: alertMailFilter, handler: sender, retries: senderRetries, invocations: senderInvocations },
@@ -593,6 +595,7 @@ export async function startDuva({
       waitingSends: { release: async (agent) => void released.push(agent) },
       reminders,
       awayEnds,
+      paymentLapses,
       hostedLogos,
       tasks: taskRunner,
       embedder: titan,

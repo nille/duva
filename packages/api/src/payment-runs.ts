@@ -5,7 +5,8 @@
 // turn or task that asked, in a session of its own, so the payment is paid once, however many runs
 // reach it. Its way back is taken once, and kept no longer. If the run can't pay, as when the page
 // expired, or can't start, a paymentNotMade change says why in Coo's activity and bubble, and the
-// payment stays approved, so a later run that pays it there with the card still does.
+// payment stays approved for a later run of the turn or task that asked, until the approval lapses
+// 24 hours on (#183). No other run pays it.
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import type { DynamoDBStreamEvent } from "aws-lambda";
 import { type AgentRuntime, capRefusal, runMailboxAgent, runtimeMissing, startRun } from "./agent-runs.ts";
@@ -55,7 +56,7 @@ export function createPaymentRunner({ table, region, apiUrl, runtime }: { table:
     const human = await findActor(table, id);
     const [agent, mailbox, card] = await Promise.all([mailboxAgentOf(table, id), findMailbox(table, payment.mailbox), findSecret(table, id, payment.card)]);
     if (human?.kind !== "human" || agent === undefined || mailbox === undefined || card === undefined) return undefined;
-    if (wayBack === undefined) return `It waited from before ${agent.name} went back to pay by itself. Ask ${agent.name} to pay it, and its next run on the site does.`;
+    if (wayBack === undefined) return `It waited from before ${agent.name} went back to pay by itself. Ask ${agent.name} to pay it again.`;
     if (agent.paused !== undefined) return `${agent.name} is paused, so it didn't go back to pay. Ask it to pay once it's unpaused.`;
     if (runtime === undefined) return runtimeMissing(region);
     const started = await startRun(table, { agent, mailbox, mailboxes: await ownedMailboxes(table, id), owner: human.email, region, apiUrl, job: "payment" });
