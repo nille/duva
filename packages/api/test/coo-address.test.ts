@@ -141,6 +141,20 @@ test("an allowed sender whose DMARC passes asks Coo by mail, and gets its answer
   ]);
 });
 
+test("what Coo writes before a tool call and after it stays apart as paragraphs, in its reply and the turn", async () => {
+  const { model } = scripted(
+    () => [{ text: "I'll look at your agents." }, use("listAgents")],
+    () => [{ text: "Nothing new since Friday." }],
+  );
+  const { duva, turns } = await withCoo({ model });
+
+  await duva.receive(request(), { to: ["linus-coo@example.com"] });
+
+  const [answer] = await sentMail(duva);
+  expect(answer!.text).toContain("I'll look at your agents.\n\nNothing new since Friday.");
+  expect((await turns()).at(-1)).toMatchObject({ from: "agent", text: "I'll look at your agents.\n\nNothing new since Friday." });
+});
+
 test("mail from a sender who isn't allowed is dropped, and noted in Coo's activity without what it says", async () => {
   const { model, requests } = scripted(() => [{ text: "Hello." }]);
   const { duva, ada, coo, events, turns } = await withCoo({ model });

@@ -470,6 +470,15 @@ export async function* runAgent(
   // it its owner read, and what of it is read at all.
   let step = { canHandOver: false, held: [] as string[], read: "", visible: withoutThinking() };
   const said: RunEvent[] = [];
+  // What its owner read last, so a step's text after another step's starts a paragraph of its own,
+  // unless the model's own text ends or starts with whitespace (#187).
+  let lastSaid = "";
+  const say = (text: string) => {
+    if (text === "") return;
+    said.push({ type: "text", text: step.read === "" && /\S$/.test(lastSaid) && /^\S/.test(text) ? `\n\n${text}` : text });
+    step.read += text;
+    lastSaid = text;
+  };
   const handTo = (reason: Handover["reason"], why?: string): RunEvent => {
     handover = { reason, from: current, to: harder, ...(why !== undefined && { why: why.slice(0, 500) }) };
     current = harder;
@@ -549,10 +558,7 @@ export async function* runAgent(
       const shown = step.visible(event.delta.text);
       if (shown === "") return;
       if (step.canHandOver) step.held.push(shown);
-      else {
-        step.read += shown;
-        said.push({ type: "text", text: shown });
-      }
+      else say(shown);
     } else if (event.type === "modelMetadataEvent" && event.usage !== undefined) {
       spent += sayUsage(said, event.usage, current, region);
     }
@@ -576,11 +582,8 @@ export async function* runAgent(
         if (!holds || misstated.length > 0) said.push(handTo("answerCheck"));
       }
       if (current === harder) return void (event.retry = true);
-      for (const shown of held) if (shown !== "") said.push({ type: "text", text: shown });
-    } else if (held[0] !== "") {
-      step.read += held[0];
-      said.push({ type: "text", text: held[0]! });
-    }
+      for (const shown of held) say(shown);
+    } else say(held[0]!);
     if (uses.length === 0 && !canHandOver && !corrected) {
       // The harder model's answer was read as it streamed, so it corrects itself after it.
       if (unbackedMemoryClaim(step.read, asConverse(agent.messages))) {

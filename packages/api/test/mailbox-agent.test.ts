@@ -176,6 +176,21 @@ test("the mailbox agent answers from what its tools read in the mailbox, streami
   expect(requests[0]!.tools.find(({ name }) => name === "getThread")!.inputSchema.json).not.toHaveProperty("properties.mailbox");
 });
 
+test("what the mailbox agent writes before a tool call and after it stays apart as paragraphs, streamed and in the turn", async () => {
+  const { model } = scripted(
+    () => [{ text: "I'll search for the report." }, use("searchMailbox", { q: "report" })],
+    () => [{ text: "You have no mail about it." }],
+  );
+  const { linus, ask } = await withMailbox({ model });
+
+  const { events } = await ask("Is there anything about the report?");
+
+  const answer = "I'll search for the report.\n\nYou have no mail about it.";
+  expect(events!.flatMap((event) => (event.type === "text" ? [event.text] : [])).join("")).toBe(answer);
+  expect(events!.at(-1)).toMatchObject({ type: "done", turn: { text: answer } });
+  expect((await linus.GET("/mailbox-agent")).data!.turns.at(-1)).toMatchObject({ from: "agent", text: answer });
+});
+
 test("the mailbox agent's search tool names the values its sort takes, and Duva refuses any other", async () => {
   const { model, requests } = scripted(
     () => [use("searchMailbox", { q: "report", sort: "best" })],
