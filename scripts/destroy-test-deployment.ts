@@ -4,13 +4,13 @@
 //
 // Deactivates Duva's receipt rule set, which SES can't delete while it's active, then deletes
 // the Duva stack, then the table, buckets, user pool and secrets key it keeps on deletion, all their data
-// included, the log groups its deletion leaves, the SES identity deploy made for the first admin's
-// address, and the web app's certificates deploy requested in us-east-1 for the deployment. With --bootstrap, it
+// included, the log groups its deletion leaves, the SES identities deploy made for the first admin's
+// and recovery addresses, and the web app's certificates deploy requested in us-east-1 for the deployment. With --bootstrap, it
 // also deletes the CDK bootstrap stack and its staging bucket, but only when the same duva deploy
 // created both stacks. For test deployments only.
 import { parseArgs } from "node:util";
 import { ACMClient, DeleteCertificateCommand, ListTagsForCertificateCommand, paginateListCertificates } from "@aws-sdk/client-acm";
-import { deploymentTagged, logGroupsLeft, stackName, stackOutputs, stackParameters } from "@duva/infra/outputs";
+import { addressIdentitiesLeft, deploymentTagged, logGroupsLeft, stackName, stackOutputs } from "@duva/infra/outputs";
 import {
   CloudFormationClient,
   DeleteStackCommand,
@@ -25,7 +25,7 @@ import { DeleteTableCommand, DynamoDBClient, waitUntilTableNotExists } from "@aw
 import { KMSClient, ScheduleKeyDeletionCommand } from "@aws-sdk/client-kms";
 import { DescribeActiveReceiptRuleSetCommand, SESClient, SetActiveReceiptRuleSetCommand } from "@aws-sdk/client-ses";
 import { DeleteBucketCommand, DeleteObjectsCommand, ListObjectVersionsCommand, S3Client } from "@aws-sdk/client-s3";
-import { DeleteEmailIdentityCommand, NotFoundException, SESv2Client } from "@aws-sdk/client-sesv2";
+import { DeleteEmailIdentityCommand, GetEmailIdentityCommand, paginateListEmailIdentities, SESv2Client, type Tag } from "@aws-sdk/client-sesv2";
 import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 
 const { values } = parseArgs({ options: { yes: { type: "boolean" }, bootstrap: { type: "boolean" } } });
@@ -66,8 +66,6 @@ if (duvasRuleSet !== undefined && active === duvasRuleSet) {
   console.log(`Deactivated receipt rule set ${active}`);
 }
 
-const admin = duva?.Parameters?.find(({ ParameterKey }) => ParameterKey === stackParameters.admin)?.ParameterValue;
-
 for (const stack of [duva, bootstrap]) {
   if (stack?.StackId === undefined) continue;
   await cloudformation.send(new DeleteStackCommand({ StackName: stack.StackId }));
@@ -93,14 +91,19 @@ for (const stack of [duva, bootstrap]) {
   console.log(`Deleted stack ${stack.StackName}`);
 }
 
-// Deploy asks SES to verify the first admin's address in the sandbox, outside the stack.
-if (admin !== undefined) {
-  try {
-    await new SESv2Client({ region }).send(new DeleteEmailIdentityCommand({ EmailIdentity: admin }));
-    console.log(`Deleted the SES identity ${admin}`);
-  } catch (error) {
-    if (!(error instanceof NotFoundException)) throw error;
+// Deploy asks SES to verify the first admin's and recovery addresses in the sandbox, outside the stack.
+const sesv2 = new SESv2Client({ region });
+const identities: { address: string; tags: Tag[] }[] = [];
+for await (const { EmailIdentities = [] } of paginateListEmailIdentities({ client: sesv2 }, {})) {
+  for (const { IdentityName, IdentityType } of EmailIdentities) {
+    if (IdentityType !== "EMAIL_ADDRESS" || IdentityName === undefined) continue;
+    const { Tags = [] } = await sesv2.send(new GetEmailIdentityCommand({ EmailIdentity: IdentityName }));
+    identities.push({ address: IdentityName, tags: Tags });
   }
+}
+for (const address of addressIdentitiesLeft(duva?.Parameters ?? [], identities, region)) {
+  await sesv2.send(new DeleteEmailIdentityCommand({ EmailIdentity: address }));
+  console.log(`Deleted the SES identity ${address}`);
 }
 
 // Deploy requests the web app's certificates in us-east-1, outside the stack, and ACM deletes one

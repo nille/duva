@@ -84,7 +84,7 @@ export interface Aws {
   emailIdentity(domain: string): Promise<{ dkimStatus: string; mailFromStatus: string; verified: boolean } | undefined>;
   /** Whether SES has verified the email address, or undefined if SES has no identity for it. */
   emailAddressVerified(address: string): Promise<boolean | undefined>;
-  /** Asks SES to verify the email address, which SES does by mailing it a link, with an identity tagged project=duva. */
+  /** Asks SES to verify the email address, which SES does by mailing it a link, with an identity tagged project=duva and as this deployment's. */
   verifyEmailAddress(address: string): Promise<void>;
   /** Whether the account is in the SES sandbox in the region, and how much SES lets it send. */
   sending(): Promise<{ sandbox: boolean; perDay: number; perSecond: number }>;

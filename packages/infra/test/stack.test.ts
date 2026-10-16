@@ -8,7 +8,7 @@ import { operations } from "@duva/openapi";
 import { buildSync } from "esbuild";
 import { afterAll, expect, test } from "vitest";
 import { duvaApp } from "../src/app.ts";
-import { logGroupsLeft } from "../src/outputs.ts";
+import { addressIdentitiesLeft, logGroupsLeft } from "../src/outputs.ts";
 
 interface Resource {
   Type: string;
@@ -1132,6 +1132,23 @@ test("the log groups the destroy script deletes once the stack is deleted are ea
   expect(logged.some((name) => name.startsWith("Duva-WebSearchGatewayLogs"))).toBe(true);
   // AgentCore names the runtime's log group for its DEFAULT endpoint, as CloudTrail showed it creating it in that run.
   expect(left.toSorted()).toEqual([...logged, "/aws/bedrock-agentcore/runtimes/DuvaMailboxAgents541EB471-qigNZr8BRn-DEFAULT"].toSorted());
+});
+
+test("the SES identities the destroy script deletes once the stack is deleted are each address's deploy tagged as this deployment's, and those of the first admin's and recovery addresses the stack's parameters hold, which deploy made untagged before", () => {
+  // As CloudFormation lists the stack's parameters, the recovery address the one #180's run in eu-west-3 left.
+  const values: Record<string, string> = { Admin: "rr23admin@example.net", Recovery: "rr23human@duva.nille.xyz" };
+  const parameters = Object.keys(stack.template.Parameters).map((ParameterKey) => ({ ParameterKey, ParameterValue: values[ParameterKey] ?? "" }));
+  const project = { Key: "project", Value: "duva" };
+  const identities = [
+    { address: "rr23admin@example.net", tags: [project] },
+    { address: "rr23human@duva.nille.xyz", tags: [project] },
+    // A recovery address the admin changed in Settings, which a later deploy verified.
+    { address: "changed@example.org", tags: [project, { Key: "duva-deployment", Value: "eu-west-3" }] },
+    { address: "someone@example.org", tags: [project] },
+    { address: "elsewhere@example.org", tags: [project, { Key: "duva-deployment", Value: "eu-west-1" }] },
+  ];
+
+  expect(addressIdentitiesLeft(parameters, identities, "eu-west-3")).toEqual(["rr23admin@example.net", "rr23human@duva.nille.xyz", "changed@example.org"]);
 });
 
 test("the inbound Lambda may publish the drop metric: its role may write its log, which is kept as text, as the metric's lines are written", () => {

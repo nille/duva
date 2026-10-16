@@ -51,6 +51,8 @@ export function realAws(region: string): Aws {
   const cognito = new CognitoIdentityProviderClient({ region });
   // CloudFront takes certificates only from ACM in us-east-1 (docs/aws.md).
   const acm = new ACMClient({ region: "us-east-1" });
+  // Deploy tags what it makes outside the stack as this deployment's, so the destroy script finds it.
+  const deploymentTags = [projectTag, { Key: deploymentTag, Value: region }];
   const requestedHere = async (arn: string) => deploymentTagged((await acm.send(new ListTagsForCertificateCommand({ CertificateArn: arn }))).Tags ?? [], region);
   return {
     region,
@@ -177,7 +179,7 @@ export function realAws(region: string): Aws {
     },
 
     async verifyEmailAddress(address) {
-      await sesv2.send(new CreateEmailIdentityCommand({ EmailIdentity: address, Tags: [projectTag] }));
+      await sesv2.send(new CreateEmailIdentityCommand({ EmailIdentity: address, Tags: deploymentTags }));
     },
 
     async sending() {
@@ -234,7 +236,7 @@ export function realAws(region: string): Aws {
           DomainName: name,
           ...(others.length > 0 && { SubjectAlternativeNames: others }),
           ValidationMethod: "DNS",
-          Tags: [projectTag, { Key: deploymentTag, Value: region }],
+          Tags: deploymentTags,
         }),
       );
       if (CertificateArn === undefined) throw new Error("ACM gave the certificate it was asked for no ARN.");

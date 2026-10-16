@@ -62,11 +62,31 @@ export const logGroupsLeft = (resources: { ResourceType?: string; PhysicalResour
     id === undefined ? [] : ResourceType === "AWS::Logs::LogGroup" ? [id] : ResourceType === "AWS::BedrockAgentCore::Runtime" ? [runtimeLogGroup(id)] : [],
   );
 
-/** The tag that names the region of the deployment a certificate in us-east-1 serves, as one account may have a deployment in each region. */
+/**
+ * The tag that names the region of the deployment deploy made something for outside the stack, a
+ * certificate in us-east-1 or an address's SES identity, as one account may have a deployment in each region.
+ */
 export const deploymentTag = "duva-deployment";
 
-/** Whether the tags say the deployment in the region requested what they're on. */
+/** Whether the tags say the deployment in the region made what they're on. */
 export const deploymentTagged = (tags: { Key?: string; Value?: string }[], region: string) => tags.some(({ Key, Value }) => Key === deploymentTag && Value === region);
+
+/**
+ * The addresses whose SES identities a deletion of the stack leaves, of the region's address
+ * identities and their tags: each deploy verified in the sandbox, which it tags as the deployment's,
+ * and those of the first admin's and recovery addresses the stack's parameters hold, which it made
+ * untagged before #185.
+ */
+export const addressIdentitiesLeft = (
+  parameters: { ParameterKey?: string; ParameterValue?: string }[],
+  identities: { address: string; tags: { Key?: string; Value?: string }[] }[],
+  region: string,
+) => {
+  const named = parameters.flatMap(({ ParameterKey, ParameterValue }) =>
+    (ParameterKey === stackParameters.admin || ParameterKey === stackParameters.recovery) && ParameterValue ? [ParameterValue] : [],
+  );
+  return identities.filter(({ address, tags }) => deploymentTagged(tags, region) || named.includes(address)).map(({ address }) => address);
+};
 
 /** The web app's hosts as the WebHosts parameter holds them, comma-separated, and the hosts it holds. */
 export const webHostsValue = (hosts: string[]) => hosts.join(",");
