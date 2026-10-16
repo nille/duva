@@ -11,7 +11,7 @@ import { BatchWriteCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws
 import type { components, ConversationEvent } from "@duva/openapi";
 import { type AgentAction, idsIn, type RunPayload, writing } from "./agent-loop.ts";
 import type { MailboxAgentModel } from "./agent-models.ts";
-import { type AgentRuntime, handoverRecorded, monthOf, noMailboxAgent, recordingMailbox, type RunEnd, runMailboxAgent, runtimeMissing, spentIn, startRun } from "./agent-runs.ts";
+import { type AgentRuntime, centsOf, handoverRecorded, monthOf, noMailboxAgent, recordingMailbox, type RunEnd, runMailboxAgent, runtimeMissing, spentIn, startRun } from "./agent-runs.ts";
 import { actorNamed } from "./alerting.ts";
 import { type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
@@ -128,6 +128,7 @@ export async function prepareTurn(
     : await addTurn(table, human, { from: "human", ...(mailbox !== undefined && { mailbox: mailbox.id }), text: words, actions: [], ...(mail !== undefined && { byMail: mail.from }) }, { ...(mail !== undefined && { request: mail.request }) });
   const payload: Omit<RunPayload, "token"> = {
     ...start,
+    ...(mail !== undefined && mail.from !== human.email && { askedBy: mail.from }),
     history: history.map(({ from, text, actions }) => ({ from, text, ...(from === "agent" && actions.length > 0 && { did: actionsRead(actions, "you") }) })),
     words: mail === undefined ? turn.text : mailedWords(human, mail, turn.text),
   };
@@ -215,8 +216,7 @@ function turnTaken(agent: Agent, human: Human, { text: words, byMail }: Conversa
     ...(handover !== undefined && { handover: handoverRecorded(handover) }),
     ...(harder && { harder }),
     outcome,
-    // Cents, to a thousandth of one.
-    cost: Math.round(cost * 100_000) / 1000,
+    cost: centsOf(cost),
   };
 }
 

@@ -490,6 +490,8 @@ function OpenEvent({
         ),
       });
     }
+    // What the run that went back to pay cost, which no turn of Ask Coo counts (#184).
+    if ((detail.change?.type === "paymentMade" || detail.change?.type === "paymentNotMade") && detail.change.cost !== undefined) facts.push({ term: copy.detail.cost, said: copy.detail.cents(detail.change.cost) });
     if (detail.alert !== undefined) facts.push({ term: copy.detail.alert, said: <a href="#/alerts">{copy.detail.openAlerts}</a> });
   }
 

@@ -2,7 +2,9 @@
 // was recorded on it. The events come from change feeds, read whole each time: those of its sponsor's
 // mailboxes for what concerns the agent, and the organization's for changes to it or by it, with
 // the alerts about it its sponsor got. So they reach back to the agent's start and need no storage
-// of their own. A mailbox agent's are those of the mailbox agents merged into it too (ADR-0033).
+// of their own. A mailbox agent's are those of the mailbox agents merged into it too (ADR-0033). As a
+// task's note is read from its thread, a payment the run that went back to pay paid is read with what
+// that run cost, which the payment keeps, since the run goes on after it pays (#184).
 import type { components } from "@duva/openapi";
 import { alertSaid, changeSaid, type MessageNamed } from "./activity-words.ts";
 import { type OperationHandler, refusal } from "./operation-handler.ts";
@@ -13,6 +15,7 @@ import { mergedInto } from "./mailbox-agents.ts";
 import { changesPerPage } from "./feed.ts";
 import { mailboxChanges, storedMessage } from "./mail.ts";
 import { type Actor, type Agent, duva, findActor, isAdmin, organizationChanges, ownedMailboxes } from "./organization.ts";
+import { costOfGoingBack } from "./payments.ts";
 import { threadTasks } from "./tasks.ts";
 
 type Change = components["schemas"]["MailboxChange"] | components["schemas"]["OrganizationChange"];
@@ -259,7 +262,10 @@ function reading(table: Table, agent: Agent, reader: Actor, all: Entry[], ids: S
       const event: AgentEvent = { ...base, at: alert.at, type: "alert", actor: duva, ...(alert.mailbox !== undefined && { mailbox: alert.mailbox }), summary };
       return { event, detail: { ...event, ...(alert.mailbox !== undefined && { mailbox: alert.mailbox }), ...(alert.thread !== undefined && { thread: alert.thread }), ...(sponsor && { alert }) } };
     }
-    const { mailbox, change: recorded } = entry;
+    const { mailbox, change: kept } = entry;
+    // A payment the run that went back paid shows what that run cost, which the payment keeps (#184).
+    const goingBack = kept.type === "paymentMade" && kept.approved === true ? await costOfGoingBack(table, { human: agent.sponsor, id: kept.payment }) : undefined;
+    const recorded = goingBack === undefined ? kept : { ...kept, cost: goingBack };
     const draft = field(recorded, "draft") as string | undefined;
     const thread =
       (field(recorded, "thread") as string | undefined) ??

@@ -8,7 +8,8 @@
 // hours, the approval lapses, so a leftover approval never pays for a run that didn't ask (#183).
 // Each payment is recorded with the run that made it, a turn of Ask Coo or a label's task, in the
 // same transaction as the card's month and the change in the mailbox's feed that Coo's activity and
-// bubble show, so a run that runs again, as a retried task or Think harder, never pays twice.
+// bubble show, so a run that runs again, as a retried task or Think harder, never pays twice. Coo
+// reads its human's payments, so it says how each stands (#184).
 import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import type { SchedulerClient } from "@aws-sdk/client-scheduler";
@@ -56,13 +57,14 @@ export type WayBack = Asked & { page: string };
 
 /**
  * A payment as stored, its amount in hundredths of its currency, while it waits its way back, and
- * once approved, when a run went back for it.
+ * once approved, when a run went back for it, and what that run cost, in US cents (#184).
  */
 export interface StoredPayment extends Omit<Payment, "amount"> {
   human: string;
   amount: number;
   wayBack?: WayBack;
   wentBackAt?: string;
+  wentBackCost?: number;
 }
 
 const paymentPrefix = "payment#";
@@ -87,7 +89,7 @@ const stateOf = ({ state, decidedAt }: StoredPayment): Payment["state"] => (stat
 
 /** The payment as the contract gives it, with none of what only Duva keeps. */
 export const paymentOf = (stored: StoredPayment): Payment => {
-  const { id, agent, card, cardName, site, amount, currency, for: what, at, decidedAt, paidAt, mailbox, run, newSite, aboveLimits } = stored;
+  const { id, agent, card, cardName, site, amount, currency, for: what, at, decidedAt, paidAt, notMade, mailbox, run, newSite, aboveLimits } = stored;
   return {
     id,
     agent,
@@ -101,6 +103,7 @@ export const paymentOf = (stored: StoredPayment): Payment => {
     at,
     ...(decidedAt !== undefined && { decidedAt }),
     ...(paidAt !== undefined && { paidAt }),
+    ...(notMade !== undefined && { notMade: { at: notMade.at, said: notMade.said } }),
     mailbox,
     run,
     ...(newSite && { newSite }),
@@ -110,6 +113,11 @@ export const paymentOf = (stored: StoredPayment): Payment => {
 
 /** The run as the secret's history and the payment name it. */
 export const runOf = ({ turn, task, mailbox, thread }: RunIdentity): SecretRun => (task === undefined ? { turn: turn! } : { task, mailbox, ...(thread !== undefined && { thread }) });
+
+async function storedPayment(table: Table, human: string, id: string): Promise<StoredPayment | undefined> {
+  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: paymentKey(human, id), ConsistentRead: true }));
+  return Item as StoredPayment | undefined;
+}
 
 async function storedPayments(table: Table, human: string): Promise<StoredPayment[]> {
   const items = (await allItems(table, {
@@ -126,8 +134,8 @@ export async function paymentsOfTurn(table: Table, human: string, turn: string):
 
 /** The human's Coo's payment with the ID, if there is one. */
 export async function findPayment(table: Table, human: string, id: string): Promise<Payment | undefined> {
-  const { Item } = await documents(table).send(new GetCommand({ TableName: table.name, Key: paymentKey(human, id), ConsistentRead: true }));
-  return Item === undefined ? undefined : paymentOf(Item as StoredPayment);
+  const payment = await storedPayment(table, human, id);
+  return payment === undefined ? undefined : paymentOf(payment);
 }
 
 /**
@@ -155,10 +163,39 @@ export async function takeWayBack(table: Table, human: string, id: string): Prom
   }
 }
 
-/** The item that has the transaction write only while the payment is approved, so nothing is said of one paid meanwhile. */
-export const stillApproved = (table: Table, { human, id }: Pick<StoredPayment, "human" | "id">): TransactItem => ({
-  ConditionCheck: { TableName: table.name, Key: paymentKey(human, id), ConditionExpression: "#state = :approved", ExpressionAttributeNames: { "#state": "state" }, ExpressionAttributeValues: { ":approved": "approved" } },
+/**
+ * The item that keeps on the approved payment why the run that went back couldn't pay it, and what
+ * that run cost, only while it is still approved, or lapsed as the run went on, so nothing is said
+ * of one paid meanwhile.
+ */
+export const keepNotMade = (table: Table, { human, id }: Pick<StoredPayment, "human" | "id">, ended: NonNullable<Payment["notMade"]>, cost?: number): TransactItem => ({
+  Update: {
+    TableName: table.name,
+    Key: paymentKey(human, id),
+    UpdateExpression: `SET notMade = :notMade${cost === undefined ? "" : ", wentBackCost = :cost"}`,
+    ConditionExpression: "#state IN (:approved, :lapsed)",
+    ExpressionAttributeNames: { "#state": "state" },
+    ExpressionAttributeValues: { ":approved": "approved", ":lapsed": "lapsed", ":notMade": ended, ...(cost !== undefined && { ":cost": cost }) },
+  },
 });
+
+/** Keeps what the run that went back to pay the payment cost, in US cents, once it paid it, which Coo's activity shows with the payment. */
+export async function keepWentBackCost(table: Table, { human, id }: Pick<StoredPayment, "human" | "id">, cost: number): Promise<void> {
+  try {
+    await documents(table).send(
+      new UpdateCommand({ TableName: table.name, Key: paymentKey(human, id), UpdateExpression: "SET wentBackCost = :cost", ConditionExpression: `attribute_exists(${pk})`, ExpressionAttributeValues: { ":cost": cost } }),
+    );
+  } catch (error) {
+    // A payment that went with its card or its human meanwhile keeps nothing.
+    if (!(error instanceof ConditionalCheckFailedException)) throw error;
+  }
+}
+
+/** What the run that went back to pay the payment cost, in US cents, if that run paid it. */
+export async function costOfGoingBack(table: Table, { human, id }: Pick<StoredPayment, "human" | "id">): Promise<number | undefined> {
+  const payment = await storedPayment(table, human, id);
+  return payment?.state === "paid" && payment.notMade === undefined ? payment.wentBackCost : undefined;
+}
 
 /** What EventBridge Scheduler hands the sender when a payment's approval has lasted its 24 hours. */
 export interface PaymentLapseEvent {
@@ -342,8 +379,10 @@ export async function payWith(
 const othersRefused = () => refusal(403, "Only humans approve their Coo's payments, each only their own.");
 
 export const listPayments: OperationHandler = async (_event, { table }, actor) => {
-  if (actor?.kind !== "human") return othersRefused();
-  return { statusCode: 200, body: { payments: (await storedPayments(table, actor.id)).map(paymentOf) } satisfies components["schemas"]["PaymentList"] };
+  // A mailbox agent lists its human's, so it can say how each stands (#184).
+  const human = actor?.kind === "human" ? actor.id : actor?.kind === "agent" && actor.mailboxAgent === true ? actor.sponsor : undefined;
+  if (human === undefined) return refusal(403, "Only humans and their own Coo list their Coo's payments. Ask your sponsor for theirs.");
+  return { statusCode: 200, body: { payments: (await storedPayments(table, human)).map(paymentOf) } satisfies components["schemas"]["PaymentList"] };
 };
 
 /**

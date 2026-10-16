@@ -5006,14 +5006,17 @@ paths:
   /payments:
     get:
       operationId: listPayments
-      summary: List your Coo's payments, newest first, those waiting for your approval among them.
+      summary: List your Coo's payments, newest first, each with how it stands and when, those waiting for your approval among them.
       description: >
         Coo pays with one of your cards on its own only on the card's sites,
         within the limits you set on it. A payment above them, or on another
         site, waits here, with its site, amount, card and what it is for,
         until you approve or decline it. Paid ones show with when, and
         approved ones until a run pays them, or they lapse, unpaid 24 hours
-        after you approved them. Only you see your Coo's payments.
+        after you approved them, with why the run that went back to pay one
+        couldn't. Only you and your Coo see your Coo's payments: a mailbox
+        agent lists its human's, so it says how each stands as Duva has it
+        now.
       x-cli-command: payments list
       responses:
         "200":
@@ -11497,6 +11500,20 @@ components:
           type: string
           format: date-time
           description: When an approved payment was paid.
+        notMade:
+          type: object
+          additionalProperties: false
+          required: [at, said]
+          description: >-
+            Present when the fresh run that went back to pay it, once
+            approved, couldn't, as when the page expired: when it ended, and
+            why, as it said.
+          properties:
+            at:
+              type: string
+              format: date-time
+            said:
+              type: string
         mailbox:
           type: string
           description: The ID of the mailbox whose change feed records it, as Coo's activity shows it.
@@ -11547,6 +11564,13 @@ components:
               type: boolean
               const: true
               description: Present when its human approved it, above the card's limits.
+            cost:
+              type: number
+              minimum: 0
+              description: >-
+                In Coo's activity, for a payment the fresh run that went back
+                to pay it paid, what that run cost, in US cents. The feed
+                itself keeps none, since the run goes on after it pays.
     PaymentAsked:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"
@@ -11636,6 +11660,10 @@ components:
             said:
               type: string
               description: Why, as the run said it, or why it couldn't run.
+            cost:
+              type: number
+              minimum: 0
+              description: What the run that went back cost, in US cents. Absent when none ran.
     PaymentLapsed:
       allOf:
         - $ref: "#/components/schemas/ChangeBase"

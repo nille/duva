@@ -5162,8 +5162,8 @@ export const operations = [
     "method": "get",
     "path": "/payments",
     "routeKey": "GET /payments",
-    "summary": "List your Coo's payments, newest first, those waiting for your approval among them.",
-    "description": "Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them, or they lapse, unpaid 24 hours after you approved them. Only you see your Coo's payments.",
+    "summary": "List your Coo's payments, newest first, each with how it stands and when, those waiting for your approval among them.",
+    "description": "Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them, or they lapse, unpaid 24 hours after you approved them, with why the run that went back to pay one couldn't. Only you and your Coo see your Coo's payments: a mailbox agent lists its human's, so it says how each stands as Duva has it now.",
     "signIn": true,
     "command": [
       "payments",

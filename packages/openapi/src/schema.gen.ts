@@ -2579,8 +2579,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List your Coo's payments, newest first, those waiting for your approval among them.
-         * @description Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them, or they lapse, unpaid 24 hours after you approved them. Only you see your Coo's payments.
+         * List your Coo's payments, newest first, each with how it stands and when, those waiting for your approval among them.
+         * @description Coo pays with one of your cards on its own only on the card's sites, within the limits you set on it. A payment above them, or on another site, waits here, with its site, amount, card and what it is for, until you approve or decline it. Paid ones show with when, and approved ones until a run pays them, or they lapse, unpaid 24 hours after you approved them, with why the run that went back to pay one couldn't. Only you and your Coo see your Coo's payments: a mailbox agent lists its human's, so it says how each stands as Duva has it now.
          */
         get: operations["listPayments"];
         put?: never;
@@ -6518,6 +6518,12 @@ export interface components {
              * @description When an approved payment was paid.
              */
             paidAt?: string;
+            /** @description Present when the fresh run that went back to pay it, once approved, couldn't, as when the page expired: when it ended, and why, as it said. */
+            notMade?: {
+                /** Format: date-time */
+                at: string;
+                said: string;
+            };
             /** @description The ID of the mailbox whose change feed records it, as Coo's activity shows it. */
             mailbox: string;
             run: components["schemas"]["SecretRun"];
@@ -6550,6 +6556,8 @@ export interface components {
              * @constant
              */
             approved?: true;
+            /** @description In Coo's activity, for a payment the fresh run that went back to pay it paid, what that run cost, in US cents. The feed itself keeps none, since the run goes on after it pays. */
+            cost?: number;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -6617,6 +6625,8 @@ export interface components {
             for: string;
             /** @description Why, as the run said it, or why it couldn't run. */
             said: string;
+            /** @description What the run that went back cost, in US cents. Absent when none ran. */
+            cost?: number;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript

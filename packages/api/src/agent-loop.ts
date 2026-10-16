@@ -68,6 +68,11 @@ export interface RunPayload {
   mailboxes: { id: string; address: string }[];
   /** The email address of its owner, the agent's sponsor. */
   owner: string;
+  /**
+   * For a turn mailed to the human's Coo by another of their allowed senders, that sender's address,
+   * whom the answer is mailed to, so what Duva says names the human to them (ADR-0040, #184).
+   */
+  askedBy?: string;
   /** The sponsor access its owner gives it in each of them. */
   access: components["schemas"]["SponsorAccess"];
   /** Whether its sends wait for the owner's approval. */
@@ -197,6 +202,13 @@ export const agentTools: ToolSpec[] = agentOperations.map((id) => toolOf(id));
 /** The tools Coo keeps, corrects and forgets its memories with, in every mailbox alike (ADR-0036). */
 const memoryTools: ToolSpec[] = memoryOperations.map((id) => toolOf(id));
 
+/** The operation Coo reads its human's payments with, in a run that may pay, so it says how each stands (#184). */
+const paymentOperations: OperationId[] = ["listPayments"];
+const paymentTools: ToolSpec[] = paymentOperations.map((id) => toolOf(id));
+
+/** Whether the run may pay: it browses with one of its human's cards among their secrets. */
+const mayPay = ({ secrets }: Pick<RunPayload, "secrets">) => (secrets ?? []).some(({ kind }) => kind === "card");
+
 /** The memory tools for a run: in a task, whose owner told it nothing, a memory names its threads. */
 const memoryToolsFor = ({ task }: Pick<RunPayload, "task">): ToolSpec[] =>
   task === undefined ? memoryTools : memoryTools.map((tool) => (tool.name === "keepMemory" ? { ...tool, inputSchema: { json: { ...tool.inputSchema.json, required: ["text", "threads"] } } } : tool));
@@ -235,7 +247,7 @@ const counterparts = new Map(
 );
 const allMailboxesTools = new Map([...counterparts.values()].map((id) => [id, toolOf(id)]));
 /** Every operation a run may call as a tool. */
-const callable = new Set<string>([...agentOperations, ...allMailboxesTools.keys(), ...memoryOperations]);
+const callable = new Set<string>([...agentOperations, ...allMailboxesTools.keys(), ...memoryOperations, ...paymentOperations]);
 
 /**
  * The tools for a run: in one mailbox, the tools as they are, and in several, each taking the
@@ -323,6 +335,11 @@ function systemPrompt(
             ? []
             : [
                 `${payload.owner} keeps secrets that browse can type into a page without you or it ever seeing them: ${payload.secrets.map(({ name, kind }) => `"${name}" (${kind})`).join(", ")}. Name in browse's secrets those the work needs, and only on the site they are for. A card pays on its own only on the sites and within the limits ${payload.owner} set for it, and elsewhere or above them the payment waits for their approval, after which Duva goes back to pay it by itself.`,
+                ...(mayPay(payload)
+                  ? [
+                      `Before you say whether a payment waits, was approved, was paid or lapsed, and before you browse to pay for something again, look it up with listPayments: ${payload.owner} decides in Approvals, and Duva goes back to pay what they approve by itself, so one may have changed since you last saw it.`,
+                    ]
+                  : []),
               ]),
         ]
       : []),
@@ -492,7 +509,7 @@ export async function* runAgent(
     if (!action.ok) failures++;
     return { ok: action.ok, result: result.slice(0, maxResult) };
   };
-  const tools = [...toolsFor(payload), ...memoryToolsFor(payload), ...(searching ? [webSearchTool] : []), ...(browsing ? [browseTool] : [])];
+  const tools = [...toolsFor(payload), ...memoryToolsFor(payload), ...(searching ? [webSearchTool] : []), ...(browsing ? [browseTool, ...(mayPay(payload) ? paymentTools : [])] : [])];
   const agent = strandsAgent({
     model: models(current),
     messages: merged([

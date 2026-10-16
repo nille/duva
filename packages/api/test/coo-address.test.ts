@@ -452,6 +452,7 @@ test("a payment above its card's limits waits, Coo's reply says so, and once it 
 
   const mails = await fromCoo();
   expect(mails).toHaveLength(3);
+  expect(mails[0]!.text).toContain("Browsed example.net: The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for your approval in Approvals.");
   expect(mails[0]!.text).toContain("Paying 149.00 SEK on example.net with Visa, for Coffee beans, 1 kg: it's above the card's limits, so it waits for your approval. I'll write again once it's decided.");
   expect(detail!.change).toMatchObject({ event: "answered", results: ["Browsed example.net.", "Paying 149.00 SEK on example.net with Visa: it's above the card's limits, so it waits for your approval. I'll write again once it's decided."] });
   expect(mails.slice(1).map(({ subject, to }) => ({ subject, to }))).toEqual([
@@ -496,4 +497,27 @@ test("mail that brings numbers but not the code counts as an attempt, so forged 
 
   expect(requests).toEqual([]);
   expect(await turns()).toEqual([]);
+});
+
+test("Coo's reply to another allowed sender names its human as the one whose approval a payment waits for", budget, async () => {
+  const { duva, linus, fromCoo } = await withCheckout([]);
+  await linus.PATCH("/mailbox-agent/address", { body: { allowedSenders: ["assistant@example.net"] } });
+
+  await duva.receive(request({ from: "assistant@example.net", subject: "Coffee", text: "Buy the beans in Linus's cart." }), { to: ["linus-coo@example.com"] });
+
+  const [answer] = await fromCoo();
+  expect(answer!.to).toEqual([{ address: "assistant@example.net", name: "" }]);
+  expect(answer!.text).toContain("Browsed example.net: The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for linus@example.org's approval in Approvals.");
+  expect(answer!.text).toContain("Paying 149.00 SEK on example.net with Visa, for Coffee beans, 1 kg: it's above the card's limits, so it waits for linus@example.org's approval. I'll write again once it's decided.");
+});
+
+test("when the run that goes back to pay finds the page asks more than was approved, the follow-up to another allowed sender says the new payment waits for approval, naming no one's", budget, async () => {
+  const { duva, linus, fromCoo, approve } = await withCheckout([() => [use("fillSecret", { element: 1, secret: "Visa", part: "number", amount: "159.00", currency: "SEK", for: "Coffee beans, 1 kg" })]]);
+  await linus.PATCH("/mailbox-agent/address", { body: { allowedSenders: ["assistant@example.net"] } });
+  await duva.receive(request({ from: "assistant@example.net", subject: "Coffee", text: "Buy the beans in Linus's cart." }), { to: ["linus-coo@example.com"] });
+
+  await approve();
+
+  const lines = (await fromCoo()).slice(1).map(({ text }) => text!.split("\n")[0]);
+  expect(lines).toContain("I went back to pay 149.00 SEK on example.net, as approved, but couldn't: The payment of 159.00 SEK on example.net is above Visa's limits, so it waits for approval in Approvals.");
 });

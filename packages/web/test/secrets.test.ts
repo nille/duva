@@ -136,7 +136,7 @@ test("a human names the sites a card pays on as they add it, then adds and remov
   await visa.getByText("None yet, so each payment waits for you.").waitFor(wait);
 });
 
-test("a payment above a card's limits waits in Approvals with its amount, site and card, and Coo's bubble says so; approved, Coo goes back to the page, its bubble says it couldn't pay once the page expired, and Approvals says the approval lapsed 24 hours on", budget, async () => {
+test("a payment above a card's limits waits in Approvals with its amount, site and card, and Coo's bubble says so; approved, Coo goes back to the page, its bubble says it couldn't pay once the page expired, opening into what going back cost, and Approvals says the approval lapsed 24 hours on", budget, async () => {
   const model = scripted({
     coo: [() => [use("browse", { url: "https://shop.example.net/checkout", goal: "Buy the coffee beans.", secrets: ["Visa"] })], () => [{ text: "The payment waits for your approval." }]],
     page: [
@@ -187,4 +187,11 @@ test("a payment above a card's limits waits in Approvals with its amount, site a
 
   await galley.getByText("Lapsed. It went unpaid for 24 hours after you approved it. Ask Coo again if you still want it.").waitFor(wait);
   expect(await row.locator(".queue-state").innerText()).toBe("Lapsed");
+
+  // What going back cost, in Coo's activity.
+  await page.getByRole("link", { name: /^Ask Coo/ }).first().click();
+  await page.getByRole("link", { name: "What Coo did" }).click();
+  await page.getByRole("region", { name: "Events" }).getByRole("link").filter({ hasText: "went back to pay 149.00 SEK on example.net" }).click();
+  const cost = page.getByRole("main").locator(".event-fact").filter({ has: page.getByRole("term").filter({ hasText: "Cost" }) }).getByRole("definition");
+  await expect.poll(() => cost.innerText(), wait).toMatch(/^[\d.]+ cents?$/);
 });

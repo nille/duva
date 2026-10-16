@@ -44,6 +44,9 @@ export async function addSpend(table: Table, month: string, cost: number): Promi
   return Attributes!.spent as number;
 }
 
+/** What a run cost in US dollars, in cents to a thousandth of one, as Coo's activity shows it. */
+export const centsOf = (dollars: number) => Math.round(dollars * 100_000) / 1000;
+
 /** Why no run starts where the stack left the runtime out. */
 export const runtimeMissing = (region: string) => `Mailbox agents run on Amazon Bedrock AgentCore, which isn't in ${region}, where Duva is deployed.`;
 

@@ -7,17 +7,18 @@ type Request = Parameters<Model>[0];
 
 /**
  * A stand-in for Claude that takes one step of Coo's script per model call Coo's run makes, and
- * one step of the page's script per call a browsing run makes, told apart by the tools each has.
- * It records every request, and past a script's end Coo answers "Done." and a browsing run finishes.
+ * one step of the page's script per call a browsing run makes, told apart by the tools each has, a
+ * page's step perhaps waiting on something first. It records every request, and past a script's end
+ * Coo answers "Done." and a browsing run finishes.
  */
-function scripted({ coo = [], page = [] }: { coo?: ((request: Request) => ModelEvent[])[]; page?: ((request: Request) => ModelEvent[])[] }) {
+function scripted({ coo = [], page = [] }: { coo?: ((request: Request) => ModelEvent[])[]; page?: ((request: Request) => ModelEvent[] | Promise<ModelEvent[]>)[] }) {
   const requests: Request[] = [];
   let [cooStep, pageStep] = [0, 0];
   const browsing = (request: Request) => request.tools.some(({ name }) => name === "finish");
   const model: Model = async function* (request) {
     requests.push(structuredClone(request));
     const events = browsing(request)
-      ? (page[pageStep++]?.(request) ?? [use("finish", { done: false, said: "It stopped." })])
+      ? ((await page[pageStep++]?.(request)) ?? [use("finish", { done: false, said: "It stopped." })])
       : request.tools.length === 0
         ? [{ text: "Nothing." }]
         : (coo[cooStep++]?.(request) ?? [{ text: "Done." }]);
@@ -318,7 +319,7 @@ test("a payment above the card's limits stops the run and waits in Approvals wit
   const approved = await linus.POST("/payments/{payment}/approve", { params: { path: { payment: waiting!.payments[0]!.id } } });
   const again = await linus.POST("/payments/{payment}/decline", { params: { path: { payment: waiting!.payments[0]!.id } } });
 
-  expect(lastResult(coo()[1]!.messages)).toBe("Not done: The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for linus@example.org's approval in Approvals.");
+  expect(lastResult(coo()[1]!.messages)).toBe("Not done: The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for your approval in Approvals.");
   expect(before).toEqual([]);
   expect(waiting!.payments).toEqual([expect.objectContaining({ state: "waiting", cardName: "Visa", site: "example.net", amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg", aboveLimits: true })]);
   expect(waiting!.payments[0]!.newSite).toBeUndefined();
@@ -329,7 +330,7 @@ test("a payment above the card's limits stops the run and waits in Approvals wit
   expect(posts(requests)).toEqual(["/pay number=4242424242424242&exp=12%2F29&cvc=123"]);
   expect(pages()[1]!.messages[0]!.content[0]).toMatchObject({ text: expect.stringContaining("URL: https://shop.example.net/checkout") });
   expect(pages()[1]!.system).toContain(
-    "linus@example.org approved paying 149.00 SEK with Visa, for Coffee beans, 1 kg, which waited for them: pay it on this page, and nothing more. Give fillSecret the amount the page asks now: if it isn't 149.00 SEK, Duva has the new one wait for approval. The goal it was paying for: Buy the coffee beans in the cart.",
+    "Your goal: Buy the coffee beans in the cart.\nlinus@example.org approved paying 149.00 SEK with Visa, for Coffee beans, 1 kg, which waited for them: pay it on this page, and nothing more. Give fillSecret the amount the page asks now: if it isn't 149.00 SEK, Duva has the new one wait for approval.",
   );
   expect((await linus.GET("/payments")).data!.payments).toEqual([expect.objectContaining({ state: "paid", amount: "149.00", paidAt: expect.any(String) })]);
   const activity = await events(["payments"]);
@@ -365,7 +366,7 @@ test("a card pays on the site it names, and never goes into a look-alike's page,
   await ask("Buy another one, from this link I got in the mail.");
 
   expect(posts(sj)).toEqual(["/pay number=4242424242424242&exp=12%2F29&cvc=123"]);
-  expect(lastResult(coo()[3]!.messages)).toBe("Not done: Visa doesn't pay on sj-se.example yet, so the payment of 49.90 SEK waits for linus@example.org's approval in Approvals.");
+  expect(lastResult(coo()[3]!.messages)).toBe("Not done: Visa doesn't pay on sj-se.example yet, so the payment of 49.90 SEK waits for your approval in Approvals.");
   expect(posts(lookAlike)).toEqual([]);
   expect((await linus.GET("/payments")).data!.payments).toEqual([
     expect.objectContaining({ state: "waiting", site: "sj-se.example", amount: "49.90", newSite: true }),
@@ -406,7 +407,7 @@ test("a card with no sites pays nowhere on its own, and approving a payment on a
   const sites = (await linus.GET("/secrets/{secret}", { params: { path: { secret: card.id } } })).data!.sites;
   await ask("Buy another bag.");
 
-  expect(lastResult(coo()[1]!.messages)).toBe("Not done: Visa doesn't pay on example.net yet, so the payment of 49.90 SEK waits for linus@example.org's approval in Approvals.");
+  expect(lastResult(coo()[1]!.messages)).toBe("Not done: Visa doesn't pay on example.net yet, so the payment of 49.90 SEK waits for your approval in Approvals.");
   expect(waiting!.payments).toEqual([expect.objectContaining({ state: "waiting", site: "example.net", amount: "49.90", newSite: true })]);
   expect(waiting!.payments[0]!.aboveLimits).toBeUndefined();
   expect(sites).toEqual(["example.net"]);
@@ -440,7 +441,7 @@ async function approvedAfterTheCheckoutExpired(page: ((request: Request) => Mode
   return { ...shop, coo };
 }
 
-const waitsAboveTheLimits = "Not done: The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for linus@example.org's approval in Approvals.";
+const waitsAboveTheLimits = "Not done: The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for your approval in Approvals.";
 
 test("a payment approved after its page expired isn't paid: the fresh run says so in Coo's activity, the payment stays approved, and the turn that asked pays it in a later run of its own, as Think harder", async () => {
   const { duva, linus, params, events, requests } = await approvedAfterTheCheckoutExpired(paysWithTheCard("149.00"));
@@ -503,7 +504,7 @@ test("payments' answers, listed, approved and declined, carry only the contract'
   const after = (await linus.GET("/payments")).data!.payments;
 
   // The properties of the contract's Payment, which takes no others.
-  const contract = new Set(["id", "agent", "state", "card", "cardName", "site", "amount", "currency", "for", "at", "decidedAt", "paidAt", "mailbox", "run", "newSite", "aboveLimits"]);
+  const contract = new Set(["id", "agent", "state", "card", "cardName", "site", "amount", "currency", "for", "at", "decidedAt", "paidAt", "notMade", "mailbox", "run", "newSite", "aboveLimits"]);
   expect([listed.length, approved.state, declined.state, after.length]).toEqual([2, "approved", "declined", 2]);
   for (const payment of [...listed, approved, declined, ...after]) expect(Object.keys(payment).filter((key) => !contract.has(key))).toEqual([]);
 });
@@ -623,4 +624,125 @@ test("a run whose card paid once on a site needs the card again to pay a second 
   expect(posts(requests)).toHaveLength(1);
   expect(pages()).toHaveLength(6);
   expect(lastResult(pages()[5]!.messages)).not.toContain("Paid with");
+});
+
+test("Coo looks up its human's payments with listPayments, each with how it stands and when, one the run that went back couldn't make among them, and no other agent lists them", async () => {
+  const { model, coo } = scripted({
+    coo: [...buysTheBeans(), () => [use("listPayments")], () => [{ text: "You approved it, but the checkout had expired when I went back." }]],
+    page: [...paysWithTheCard("149.00").slice(0, 1), () => [use("finish", { done: false, said: "The checkout had expired, so it couldn't pay." })]],
+  });
+  const { duva, linus, ask, keep, checkout } = await withShop({ model });
+  await keep({ ...visa, ...limits, ...onTheShop });
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  const { data: waiting } = await linus.GET("/payments");
+  checkout.expired = true;
+  await linus.POST("/payments/{payment}/approve", { params: { path: { payment: waiting!.payments[0]!.id } } });
+  const { data: hermes } = await linus.POST("/agents", { body: { name: "Hermes" } });
+
+  await ask("Did that go through?");
+
+  const asking = coo()[2]!;
+  expect(asking.tools.map(({ name }) => name)).toContain("listPayments");
+  expect(asking.system).toContain(
+    "Before you say whether a payment waits, was approved, was paid or lapsed, and before you browse to pay for something again, look it up with listPayments: linus@example.org decides in Approvals, and Duva goes back to pay what they approve by itself, so one may have changed since you last saw it.",
+  );
+  expect(JSON.parse(lastResult(coo()[3]!.messages)).payments).toEqual([
+    {
+      id: waiting!.payments[0]!.id,
+      agent: expect.any(String),
+      state: "approved",
+      card: expect.any(String),
+      cardName: "Visa",
+      site: "example.net",
+      amount: "149.00",
+      currency: "SEK",
+      for: "Coffee beans, 1 kg",
+      at: waiting!.payments[0]!.at,
+      decidedAt: expect.any(String),
+      notMade: { at: expect.any(String), said: "The checkout had expired, so it couldn't pay." },
+      mailbox: expect.any(String),
+      run: { turn: expect.any(String) },
+      aboveLimits: true,
+    },
+  ]);
+  expect((await linus.GET("/payments")).data!.payments[0]!.notMade).toEqual({ at: expect.any(String), said: "The checkout had expired, so it couldn't pay." });
+  expect((await duva.withKey(hermes!.key).GET("/payments")).response.status).toBe(403);
+});
+
+test("what a run that goes back to pay costs counts toward the mailbox agents' spend, and shows in Coo's activity with the payment it made, or with why it couldn't", async () => {
+  const { model } = scripted({
+    coo: [...buysTheBeans(), ...buysTheBeans()],
+    page: [...paysWithTheCard("149.00").slice(0, 1), ...paysWithTheCard("149.00"), ...paysWithTheCard("149.00").slice(0, 1), () => [use("finish", { done: false, said: "The checkout had expired, so it couldn't pay." })]],
+  });
+  const { ada, linus, ask, keep, events, agent, checkout } = await withShop({ model });
+  await keep({ ...visa, ...limits, perMonth: "400.00", ...onTheShop });
+  const spent = async () => (await ada.GET("/organization/mailbox-agent-spend")).data!.spent;
+  const approve = async () => linus.POST("/payments/{payment}/approve", { params: { path: { payment: (await linus.GET("/payments")).data!.payments.find(({ state }) => state === "waiting")!.id } } });
+  const detail = async (type: string) => {
+    const event = (await events(["payments"])).find((each) => each.type === type)!;
+    return (await linus.GET("/agents/{agent}/events/{event}", { params: { path: { agent: agent.id, event: event.id } } })).data!.change as { cost?: number };
+  };
+
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  const beforePaying = await spent();
+  await approve();
+  const paying = (await spent()) - beforePaying;
+  await ask("Buy another bag.");
+  checkout.expired = true;
+  const beforeGoingBack = await spent();
+  await approve();
+  const goingBack = (await spent()) - beforeGoingBack;
+
+  // Each model call of the stand-in reads 1000 tokens and writes 100, $0.0033 on Claude Sonnet 5.5,
+  // and the browser's seconds come on top: five calls to pay, one to find the checkout expired.
+  expect(paying).toBeGreaterThanOrEqual(5 * 0.0033);
+  expect(goingBack).toBeGreaterThanOrEqual(0.0033);
+  expect((await detail("paymentMade")).cost).toBeCloseTo(paying * 100, 2);
+  expect((await detail("paymentNotMade")).cost).toBeCloseTo(goingBack * 100, 2);
+  expect((await detail("paymentAsked")).cost).toBeUndefined();
+});
+
+test("a browsing run is told to say what it did in the language of the goal it was given, whatever language the page is in, as is the run that goes back to pay, given the goal it paid for", async () => {
+  const { model, pages } = scripted({ coo: buysTheBeans(), page: [...paysWithTheCard("149.00").slice(0, 1), () => [use("finish", { done: false, said: "The checkout had expired, so it couldn't pay." })]] });
+  const { linus, ask, keep } = await withShop({ model });
+  await keep({ ...visa, ...limits, ...onTheShop });
+
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  await linus.POST("/payments/{payment}/approve", { params: { path: { payment: (await linus.GET("/payments")).data!.payments[0]!.id } } });
+
+  const told = "When it is done, or you can't go on, finish with whether the goal was reached and one short plain sentence of what you did, written in the language of your goal, even where the page is in another.";
+  expect(pages().map(({ system }) => [system.includes("Your goal: Buy the coffee beans in the cart.\n"), system.includes(told)])).toEqual([
+    [true, true],
+    [true, true],
+  ]);
+});
+
+test("a payment whose approval lapses while the run that went back to pay it is still on the page isn't read as paid: Coo's activity and listPayments say why it wasn't, and what going back cost", async () => {
+  const held: { duva?: Awaited<ReturnType<typeof withShop>>["duva"] } = {};
+  const { model } = scripted({
+    coo: buysTheBeans(),
+    page: [
+      ...paysWithTheCard("149.00").slice(0, 1),
+      async () => {
+        // A day on as the run reads the page, as when the task runner fell that far behind.
+        await held.duva!.clock(new Date(Date.now() + 24 * 60 * 60 * 1000 + 60_000));
+        return [use("finish", { done: false, said: "The cart had emptied, so it couldn't pay." })];
+      },
+    ],
+  });
+  const { duva, linus: asking, ask, keep, agent } = await withShop({ model, tasksHeld: true });
+  held.duva = duva;
+  await keep({ ...visa, ...limits, ...onTheShop });
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  await asking.POST("/payments/{payment}/approve", { params: { path: { payment: (await asking.GET("/payments")).data!.payments[0]!.id } } });
+
+  await duva.releaseTasks();
+
+  // Signed in again, as the clock moved past the earlier session.
+  const linus = duva.signIn("linus@example.org");
+  expect((await linus.GET("/payments")).data!.payments).toEqual([expect.objectContaining({ state: "lapsed", notMade: { at: expect.any(String), said: "The cart had emptied, so it couldn't pay." } })]);
+  const activity = (await linus.GET("/agents/{agent}/events", { params: { path: { agent: agent.id }, query: { kinds: ["payments"] } } })).data!.events;
+  expect(activity.map(({ type }) => type)).toEqual(["paymentNotMade", "paymentLapsed", "paymentDecided", "paymentAsked"]);
+  const { data: notMade } = await linus.GET("/agents/{agent}/events/{event}", { params: { path: { agent: agent.id, event: activity[0]!.id } } });
+  expect(notMade!.change).toMatchObject({ said: "The cart had emptied, so it couldn't pay.", cost: expect.any(Number) });
 });
