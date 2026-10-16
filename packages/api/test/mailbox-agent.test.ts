@@ -392,7 +392,7 @@ test("the conversation keeps its turns, which the agent reads back, until its ow
     ["user", { text: "What did I say?" }],
   ]);
   expect(cleared.data!.turns).toEqual([]);
-  expect(requests[2]!.messages).toEqual([{ role: "user", content: [{ text: "What did I say?" }] }]);
+  expect(requests[2]!.messages).toEqual([{ role: "user", content: [{ text: "What did I say?" }, { text: "[Duva, not your owner: this is written in English, so answer in English.]" }] }]);
 });
 
 test("a run stops at the organization's spend cap, with an alert to its sponsor, and runs are refused until an admin raises it", async () => {
@@ -729,4 +729,17 @@ test("setup carries over an everyday model an admin chose before, when it was th
 
   expect((await ada.GET("/organization/settings")).data).toMatchObject({ mailboxAgentAllowedModels: [haiku, sonnet, novaTwo], mailboxAgentModel: novaTwo, mailboxAgentHarderModel: sonnet });
   expect((await ada.PATCH("/organization/settings", { body: { mailboxAgentSpendCap: 30 } })).response.status).toBe(200);
+});
+
+test("Coo is told to speak to its human as you, never by their address, and that mail, threads, drafts and payments change between its answers, so it says what changed since rather than that an earlier answer was wrong", async () => {
+  const { model, requests } = scripted(() => [use("listThreads")], () => [{ text: "Nothing new." }]);
+  const { ask, sonnetOnly } = await withMailbox({ model });
+  await sonnetOnly();
+
+  await ask("What's new?");
+
+  expect(requests[0]!.system).toContain("Speak to your owner as you, never by their address.");
+  expect(requests[0]!.system).toContain(
+    "Mail comes and goes, threads and drafts change, and payments are decided between your answers, and Duva's note after an earlier answer that looked something up says when you gave it. So when something stands otherwise than an earlier answer said, say what changed since and when, never that the earlier answer was wrong, unless it was wrong when you gave it.",
+  );
 });

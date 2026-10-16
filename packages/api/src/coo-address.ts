@@ -127,13 +127,19 @@ export async function listedSenders(table: Table, human: string): Promise<string
 }
 
 /**
- * Whether the address may mail the human's Coo: one of their own, with or without a plus tag, or
- * on an alias domain that mirrors it, or one they listed.
+ * Whether the address is one of the human's own, with or without a plus tag, or on an alias domain
+ * that mirrors it, so Coo speaks to it as to them (#188).
  */
-export async function mayAskCoo(table: Table, human: Human, address: string): Promise<boolean> {
+export async function isOwnAddress(table: Table, human: Human, address: string): Promise<boolean> {
   const from = address.toLowerCase();
-  const [own, listed, aliases] = await Promise.all([ownAddressesOf(table, human), listedSenders(table, human.id), aliasDomains(table)]);
-  return own.includes(from) || own.includes(mirroredAddress(from, aliases)) || listed.includes(from);
+  const [own, aliases] = await Promise.all([ownAddressesOf(table, human), aliasDomains(table)]);
+  return own.includes(from) || own.includes(mirroredAddress(from, aliases));
+}
+
+/** Whether the address may mail the human's Coo: one of their own, or one they listed. */
+export async function mayAskCoo(table: Table, human: Human, address: string): Promise<boolean> {
+  const [own, listed] = await Promise.all([isOwnAddress(table, human, address), listedSenders(table, human.id)]);
+  return own || listed.includes(address.toLowerCase());
 }
 
 async function cooAddressRead(table: Table, human: Human): Promise<CooAddress> {

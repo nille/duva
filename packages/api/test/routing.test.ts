@@ -283,3 +283,32 @@ test("admins read how the month's turns were routed, each kept with its words' e
   });
   expect(refused.response.status).toBe(403);
 });
+
+/** The text blocks of the last message the model was given, which ends with what the human asked. */
+const lastTexts = (request: Request) => request.messages.at(-1)!.content.flatMap((block) => ("text" in block ? [block.text] : []));
+
+test("Coo is told the language its human wrote in by name, beside their words and in the line of a handover for help or after an answer that didn't hold up, as for an English request after a Swedish conversation", async () => {
+  const { model, requests } = scripted({
+    [nova]: [() => [use("listThreads")], () => [{ text: "En rapport, från Grace." }], () => [use("ask_for_help", { why: "I can't tell which report they mean." })], () => [{ text: "The newest is from today." }]],
+    [sonnet]: [() => [{ text: "One report, from Grace." }], () => [{ text: "The one from today." }]],
+  });
+  const { ask } = await withMailbox({ model, decider: deciding("simple", 0.9) });
+
+  await ask("Hur många rapporter har jag fått från Grace?");
+  await ask("And how many of them are from this quarter?");
+  await ask("Which of them is the newest?");
+  await ask("OK");
+
+  const first = requests.filter(({ model: asked }) => asked === nova)[0]!;
+  const [handedTo, checked] = requests.filter(({ model: asked }) => asked === sonnet);
+  const last = requests.at(-1)!;
+  expect(lastTexts(first)).toEqual(["Hur många rapporter har jag fått från Grace?", "[Duva, not your owner: this is written in Swedish, so answer in Swedish.]"]);
+  // After Duva's note on the answer before, which ends the history.
+  expect(lastTexts(handedTo!).slice(-2)).toEqual(["And how many of them are from this quarter?", "[Duva, not your owner: this is written in English, so answer in English.]"]);
+  expect(handedTo!.system).toContain("since it asked for help: I can't tell which report they mean. Carry on from there, answering in English.");
+  // An answer with no lookup doesn't hold up, so the harder model takes the turn, told the language too.
+  expect(checked!.system).toContain("since its answer didn't hold up. Carry on from there, answering in English.");
+  // Words that tell no language get no note, and the prompt says which message's language to answer in.
+  expect(lastTexts(last)).toEqual(["OK"]);
+  expect(last.system).toContain("Answer briefly and plainly, in the language of your owner's last message, as plain text without Markdown.");
+});

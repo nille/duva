@@ -535,3 +535,27 @@ test("when the run that goes back to pay finds the page asks more than was appro
   const lines = (await fromCoo()).slice(1).map(({ text }) => text!.split("\n")[0]);
   expect(lines).toContain("I went back to pay 149.00 SEK on example.net, as approved, but couldn't: The payment of 159.00 SEK on example.net is above Visa's limits, so it waits for approval in Approvals.");
 });
+
+test("a request mailed from one of the human's own mailboxes is their own, so Coo's reply says a payment waits for your approval", budget, async () => {
+  const { duva, linus, mailbox, fromCoo } = await withCheckout([]);
+  const params = { path: { mailbox: mailbox.id } };
+  const { data: draft } = await linus.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["linus-coo@example.com"], subject: "Coffee", text: "Buy the beans in my cart." } });
+  await linus.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
+
+  await duva.receive(duva.sent()[0]!, { to: ["linus-coo@example.com"] });
+
+  const [answer] = await fromCoo();
+  expect(answer!.to).toEqual([{ address: "linus@example.com", name: "" }]);
+  expect(answer!.text).toContain("Browsed example.net: The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for your approval in Approvals.");
+  expect(answer!.text).toContain("so it waits for your approval. I'll write again once it's decided.");
+});
+
+test("Coo is told the language of a request by mail from the request's own words, never from what Duva says around them", budget, async () => {
+  const { model, requests } = scripted(() => [{ text: "Inget nytt." }]);
+  const { duva } = await withCoo({ model });
+
+  await duva.receive(request({ subject: "Fråga", text: "Har det kommit något nytt sedan i fredags?" }), { to: ["linus-coo@example.com"] });
+
+  const asked = requests[0]!.messages.at(-1)!.content.flatMap((block) => ("text" in block ? [block.text] : []));
+  expect(asked.at(-1)).toBe("[Duva, not your owner: this is written in Swedish, so answer in Swedish.]");
+});

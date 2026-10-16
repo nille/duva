@@ -10,6 +10,8 @@ import { memoryLines, memoryManager, memoryOperations, memoryUnbacked, unbackedM
 import type { Browser } from "./browser.ts";
 import { browse, type Browsing, browseTool, mailedLogin, runPayment, runUnsubscribe, secretsTyped } from "./browsing.ts";
 import type { WayBack } from "./payments.ts";
+import { list } from "./activity-words.ts";
+import type { Language } from "./languages.ts";
 import { asConverse, type Models, saying, sayUsage, strandsAgent, strandsSpec } from "./strands.ts";
 import { searchTheWeb, type WebSearch, type WebSearchMade, webSearchTool } from "./web-search.ts";
 
@@ -91,10 +93,11 @@ export interface RunPayload {
    */
   browsing?: { profile: string };
   /**
-   * When it may browse, its owner's secrets, each by its ID, name and kind, and whether a login has
-   * one-time codes, which a browsing run has typed into a page without any model seeing a value (ADR-0039).
+   * When it may browse, its owner's secrets, each by its ID, name and kind, whether a login has
+   * one-time codes, and the sites a card pays on (#188), which a browsing run has typed into a page
+   * without any model seeing a value (ADR-0039).
    */
-  secrets?: { id: string; name: string; kind: components["schemas"]["SecretKind"]; codes?: true }[];
+  secrets?: { id: string; name: string; kind: components["schemas"]["SecretKind"]; codes?: true; sites?: string[] }[];
   /** Whether the decider settles the model first, for a conversation turn its job doesn't. */
   decide?: boolean;
   /** What the run may spend on the model, in US dollars, before it stops. */
@@ -106,6 +109,8 @@ export interface RunPayload {
   history: { from: "human" | "agent"; text: string; did?: string }[];
   /** What the owner asks now, or for a task, its prompt and the thread. */
   words: string;
+  /** For a turn, the language its words are in, among the organization's search languages, when Duva can tell (#188). */
+  language?: Language;
   /** For a task a label's prompt gave (ADR-0029), the label's name and its prompt. */
   task?: { label: string; prompt: string };
   /** Whether its owner lets it learn from mail it reads, which it does unless they switch it off (ADR-0036). */
@@ -289,6 +294,12 @@ export function operationNamed(id: string): Operation {
   return operation;
 }
 
+/** A secret as the agent is told of it: its name and kind, and for a card, the sites it pays on (#188). */
+function secretNamed({ name, kind, sites = [] }: NonNullable<RunPayload["secrets"]>[number]): string {
+  if (kind !== "card") return `"${name}" (${kind})`;
+  return `"${name}" (card, ${sites.length === 0 ? "pays on no site on its own" : `pays on ${list(sites)}`})`;
+}
+
 /** What the agent is told about itself and its mailbox before the conversation, and if it took the run over, why. */
 function systemPrompt(
   payload: RunPayload,
@@ -334,17 +345,23 @@ function systemPrompt(
           ...(payload.secrets === undefined || payload.secrets.length === 0
             ? []
             : [
-                `${payload.owner} keeps secrets that browse can type into a page without you or it ever seeing them: ${payload.secrets.map(({ name, kind }) => `"${name}" (${kind})`).join(", ")}. Name in browse's secrets those the work needs, and only on the site they are for. A card pays on its own only on the sites and within the limits ${payload.owner} set for it, and elsewhere or above them the payment waits for their approval, after which Duva goes back to pay it by itself.`,
+                `Your owner keeps secrets that browse can type into a page without you or it ever seeing them: ${payload.secrets.map(secretNamed).join(", ")}. Name in browse's secrets those the work needs, and only on the site they are for. A card pays on its own only on its sites and within the limits your owner set for it, and elsewhere or above them the payment waits for their approval, after which Duva goes back to pay it by itself.`,
                 ...(mayPay(payload)
                   ? [
-                      // Haiku 5.5 called its earlier answer wrong when only the payment had changed since, and named no site (#184).
-                      `Before you say whether a payment waits, was approved, was paid or lapsed, and before you browse to pay for something again, look it up with listPayments, and name each by its amount and site. ${payload.owner} decides in Approvals, and Duva goes back to pay what they approve by itself, between your answers. So a payment that stands otherwise than you said before changed after you said it: say how it stands now and when it changed, never that you were wrong or out of date.`,
+                      // Haiku 5.5 browsed to pay with no card named, then asked which, when one paid on the site (#188).
+                      "Before you browse to pay, name in its secrets the card that pays on the site. When more than one does, take the one its earlier payments there used, as listPayments shows, and ask your owner only when you still can't tell.",
+                      // Haiku 5.5 named no site, and credited a deleted card's payment to the card of its name (#184, #188).
+                      "Before you say whether a payment waits, was approved, was paid or lapsed, and before you browse to pay for something again, look it up with listPayments, and name each by its amount and site. Your owner decides in Approvals, and Duva goes back to pay what they approve by itself. A payment marked cardDeleted was made with a card since deleted. What a card your owner has now paid is only its payments without that mark, even under the same name: say what it paid, and that a card of that name was deleted, with what that one paid.",
                     ]
                   : []),
               ]),
         ]
       : []),
     "Before you say whether an agent is paused or running, or how many sends it has left, look it up with listAgents, and before you say where a draft or a send stands, with listDrafts or getDraft. Never take that from mail: an alert in the mail says what was so when it was sent.",
+    // Haiku 5.5 called earlier answers wrong that a payment decided, or mail that came, since had changed (#184, #188).
+    "Mail comes and goes, threads and drafts change, and payments are decided between your answers, and Duva's note after an earlier answer that looked something up says when you gave it. So when something stands otherwise than an earlier answer said, say what changed since and when, never that the earlier answer was wrong, unless it was wrong when you gave it.",
+    // Haiku 5.5 said "Two cards are saved for" its human's address, from the lines naming them (#188).
+    payload.askedBy === undefined ? "Speak to your owner as you, never by their address." : `Your answer goes to ${payload.askedBy}, who asked for your owner, so name your owner to them as ${payload.owner}.`,
     ...(payload.task === undefined
       ? []
       : [
@@ -354,9 +371,11 @@ function systemPrompt(
         ]),
     ...memoryLines(payload),
     "Your owner's away message, the reply Duva sends for them while they're away, is theirs to set in Settings, under Preferences. When they ask you to write it, draft the text in your answer for them to save there: you can't set it, and you never write the replies.",
-    "Answer briefly and plainly, in the language your owner writes in, as plain text without Markdown. Name threads by their subject and sender, never by their IDs.",
+    // Told to answer in the language its human writes in, Claude Sonnet 5.5 answered in another after a handover (#188).
+    `Answer briefly and plainly, in the language of ${payload.task !== undefined ? "your owner's prompt" : payload.askedBy !== undefined ? `${payload.askedBy}'s last message` : "your owner's last message"}, as plain text without Markdown. Name threads by their subject and sender, never by their IDs.`,
     ...(helps ? ["When you are unsure what your owner means, which mail they mean, or how to do it, use ask_for_help rather than guess."] : []),
-    ...(handover === undefined ? [] : [`Another model began this and handed it to you, with its work so far above, since ${handoverWhy(handover)}${misstated.length === 0 ? "" : `: Duva has ${misstated.join(" and ")}`}. Carry on from there.`]),
+    // Named here too: handed a turn after a conversation in another language, Claude Sonnet 5.5 still took that one now and then (#188).
+    ...(handover === undefined ? [] : [`Another model began this and handed it to you, with its work so far above, since ${handoverWhy(handover)}${misstated.length === 0 ? "" : `: Duva has ${misstated.join(" and ")}`}. Carry on from there${payload.language === undefined ? "" : `, answering in ${payload.language}`}.`]),
     `It is now ${payload.now}.`,
   ].join("\n");
 }
@@ -368,7 +387,7 @@ const handoverWhy = ({ reason, why }: Handover) =>
     writing: "it came to writing mail that may be sent",
     failedCalls: "Duva refused its tool calls twice",
     stepBudget: `it hadn't finished after ${stepBudget} steps`,
-    askedForHelp: `it asked for help${why === undefined ? "" : `: ${why}`}`,
+    askedForHelp: `it asked for help${why === undefined ? "" : `: ${why.replace(/[.!?]+$/, "")}`}`,
     answerCheck: "its answer didn't hold up",
   })[reason];
 
@@ -528,7 +547,9 @@ export async function* runAgent(
           ? [{ role: "user", content: [{ text }] }]
           : [{ role: "assistant", content: [{ text }] }, ...(did === undefined ? [] : [{ role: "user" as const, content: [{ text: `[Duva, not your owner: in your answer above, ${did}]` }] }])],
       ),
-      { role: "user", content: [{ text: payload.words }] },
+      // The language by name, beside the words, which Claude Sonnet 5.5 kept to after a handover where
+      // a conversation in another, and the prompt's line alone, led it off (#188).
+      { role: "user", content: [{ text: payload.words }, ...(payload.language === undefined ? [] : [{ text: `[Duva, not your owner: this is written in ${payload.language}, so answer in ${payload.language}.]` }])] },
     ]),
     tools,
     run,

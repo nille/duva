@@ -614,7 +614,7 @@ export function partIn(parts: Parts, part: SecretPartName): string | undefined {
   return parts[part as Exclude<SecretPartName, "code" | "expiryMonth" | "expiryYear">];
 }
 
-/** What a run's payload names of the human's secrets, for Coo to choose from: each one's ID, name and kind, and whether a login has codes. */
+/** What a run's payload names of the human's secrets, for Coo to choose from: each one's ID, name and kind, whether a login has codes, and the sites a card pays on (#188). */
 export async function secretsForRun(table: Table, human: string): Promise<NonNullable<RunPayload["secrets"]>> {
-  return (await storedSecrets(table, human)).map(({ id, name, kind, oneTimeCodes }) => ({ id, name, kind, ...(oneTimeCodes && { codes: oneTimeCodes }) }));
+  return (await storedSecrets(table, human)).map(({ id, name, kind, oneTimeCodes, sites }) => ({ id, name, kind, ...(oneTimeCodes && { codes: oneTimeCodes }), ...(kind === "card" && { sites: sites ?? [] }) }));
 }

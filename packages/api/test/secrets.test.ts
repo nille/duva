@@ -237,7 +237,7 @@ test("Coo logs in with a stored login and its one-time code, and fills a stored 
 
   expect(posts(requests)).toEqual([`/login user=linus.t&password=correct+horse+battery+staple`, `/verify code=${seedsCode}`, `/membership member=SJ-4471-2209`]);
   // Coo knows its human's secrets by name and kind, and names those the run may use.
-  expect(coo()[0]!.system).toContain(`linus@example.org keeps secrets that browse can type into a page without you or it ever seeing them: "Example Shop" (login), "Membership" (other), "Visa" (card).`);
+  expect(coo()[0]!.system).toContain(`Your owner keeps secrets that browse can type into a page without you or it ever seeing them: "Example Shop" (login), "Membership" (other), "Visa" (card, pays on no site on its own).`);
   expect(pages()[0]!.tools.map(({ name }) => name)).toContain("fillSecret");
   expect(pages()[0]!.system).toContain(`"Example Shop", a login, with username and password, and code for its one-time code; "Membership", a value, with value`);
   expect(pages()[0]!.system).not.toContain("Visa");
@@ -728,7 +728,7 @@ test("Coo looks up its human's payments with listPayments, each with how it stan
   const asking = coo()[2]!;
   expect(asking.tools.map(({ name }) => name)).toContain("listPayments");
   expect(asking.system).toContain(
-    "Before you say whether a payment waits, was approved, was paid or lapsed, and before you browse to pay for something again, look it up with listPayments, and name each by its amount and site. linus@example.org decides in Approvals, and Duva goes back to pay what they approve by itself, between your answers. So a payment that stands otherwise than you said before changed after you said it: say how it stands now and when it changed, never that you were wrong or out of date.",
+    "Before you say whether a payment waits, was approved, was paid or lapsed, and before you browse to pay for something again, look it up with listPayments, and name each by its amount and site. Your owner decides in Approvals, and Duva goes back to pay what they approve by itself.",
   );
   expect(JSON.parse(lastResult(coo()[3]!.messages)).payments).toEqual([
     {
@@ -868,8 +868,24 @@ test("Coo's next turn reads, as Duva's note, when its earlier answer was given a
   await ask("Did that go through?");
 
   const answered = (await linus.GET("/mailbox-agent")).data!.turns[1]!;
-  const notes = coo()[2]!.messages.flatMap(({ role, content }) => (role === "user" ? content.flatMap((block) => ("text" in block && block.text.startsWith("[Duva") ? [block.text] : [])) : []));
+  const notes = coo()[2]!.messages.flatMap(({ role, content }) => (role === "user" ? content.flatMap((block) => ("text" in block && block.text.startsWith("[Duva, not your owner: in your answer above") ? [block.text] : [])) : []));
   expect(notes).toEqual([
     `[Duva, not your owner: in your answer above, given at ${answered.at}, you browsed example.net, and its run said "The payment of 149.00 SEK on example.net is above Visa's limits, so it waits for your approval in Approvals."]`,
   ]);
+});
+
+test("Coo is told which sites each card pays on, to name the card that pays on a site before it browses to pay and ask only when it can't tell which, and that a deleted card's payments are none of the card of its name its human has now", async () => {
+  const { model, coo } = scripted({ coo: [() => [{ text: "Which card?" }]] });
+  const { ask, keep } = await withShop({ model });
+  await keep({ ...visa, ...limits, sites: ["example.net", "sj.se"] });
+  await keep({ ...visa, name: "Spare Visa", ...limits });
+
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+
+  const { system } = coo()[0]!;
+  expect(system).toContain('"Spare Visa" (card, pays on no site on its own), "Visa" (card, pays on example.net and sj.se).');
+  expect(system).toContain(
+    "Before you browse to pay, name in its secrets the card that pays on the site. When more than one does, take the one its earlier payments there used, as listPayments shows, and ask your owner only when you still can't tell.",
+  );
+  expect(system).toContain("A payment marked cardDeleted was made with a card since deleted. What a card your owner has now paid is only its payments without that mark, even under the same name: say what it paid, and that a card of that name was deleted, with what that one paid.");
 });

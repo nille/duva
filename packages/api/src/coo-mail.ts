@@ -19,7 +19,7 @@ import { PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { AgentAction } from "./agent-loop.ts";
 import { capRefusal, type AgentRuntime } from "./agent-runs.ts";
 import { prepareTurn, runTurn, type ConversationTurn } from "./conversation.ts";
-import { cooAddressOf } from "./coo-address.ts";
+import { cooAddressOf, isOwnAddress } from "./coo-address.ts";
 import {
   awaitDecision,
   codeKey,
@@ -282,7 +282,7 @@ const keptAsMailed = (line: string): ResultLine => ({ mailed: line, kept: line }
  * once it is decided.
  */
 async function resultsOf(runner: CooMailRunner, human: Human, request: CooRequest, asked: string, answer: ConversationTurn): Promise<ResultLine[]> {
-  const whose = request.from === human.email ? "your" : `${human.email}'s`;
+  const whose = (await isOwnAddress(runner.table, human, request.from)) ? "your" : `${human.email}'s`;
   const results: ResultLine[] = [];
   for (const action of answer.actions) {
     // What only read, or a tool Duva doesn't have, changed nothing, so the mail leaves it out.
@@ -337,7 +337,7 @@ async function followUp(runner: CooMailRunner, followed: FollowUp): Promise<void
   if (taken === undefined) return;
   const [request, human] = await Promise.all([findRequest(table, taken.human, taken.id), humanOf(table, taken.human)]);
   if (request === undefined || human === undefined) return;
-  const who = request.from === human.email ? "You" : human.email;
+  const who = (await isOwnAddress(table, human, request.from)) ? "You" : human.email;
   const line = "draft" in followed ? await sendDecided(runner, followed.mailbox, followed.draft, followed.outcome, who) : await paymentDecided(runner, human, followed.payment, followed.outcome, who, followed.said);
   const sent = await mail(runner, human, request, { text: line.mailed });
   if (sent === undefined) return;

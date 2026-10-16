@@ -89,7 +89,7 @@ function whyNotBounced(change: Extract<Change, { type: "unsubscribeAttempted" }>
 }
 
 /** The names in a list as a sentence lists them: "A", "A and B", "A, B and C". */
-const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+export const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
 /** What a line adds of the agent's web searches, if it made any and the reader may read them. */
 const searched = (searches: components["schemas"]["WebSearch"][] | undefined) =>

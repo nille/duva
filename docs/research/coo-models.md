@@ -171,6 +171,28 @@ Two changes, then the defaults and Haiku 5.5 alone recorded again on 2026-10-14,
 - **The memory cases no longer hand over:** each run was Haiku's alone, and the erasure case cost about 1 cent a run where it cost 16, since Haiku answered within its step budget.
 - **The other setups keep their recordings.** Neither change alters what Duva does with a recorded call, so they replay as recorded, though each was recorded with the prompt and descriptions of its day (Caveats).
 
+## The language Coo answers in (#184, #188)
+
+Claude Sonnet 5.5 switches language when it is told to find the language itself. Claude Haiku 5.5 never did. Probed on Bedrock on 2026-10-16, as a deployment in eu-north-1 calls the models, through Duva's own loop: Sonnet was real, and Haiku was scripted to hand over as it did in the real runs, or both were real. Duva's API was a stub, answering with the real run's 17 payments, and the page came from a stand-in browser.
+
+**What it was:** a shop's item name. Told to answer "in the language your owner writes in", Sonnet took the language from the Swedish item name in the payments it had just listed, "Testpryl", beside their SEK. With that name in English, the same prompt answered in English 6 of 6 times, where it had switched 3 of 4. A browsing run told "the language of your goal" did the same from a checkout's SEK and kr. Swedish turns earlier in a conversation pull it the same way, so a line telling it which message to follow isn't enough there.
+
+| Sonnet 5.5, an English request | Answered in another language |
+| --- | --- |
+| A browsing run told "written in the language of your goal, even where the page is in another", on an English page | 3 of 3, Swedish |
+| The same run, told the language by name | 0 of 8 |
+| After an answer-check handover, no history, told "in the language your owner writes in" | 3 of 4, Swedish |
+| The same, with the payments' item names in English | 0 of 6 |
+| The same, told "in the language of your owner's last message", or no language line | 0 of 4 each |
+| After asking for help, two Swedish turns before it, told "in the language of your owner's last message" | 1 of 3 |
+| The same, the language named in the system prompt | 3 of 6 |
+| The same, named in a note beside the words | 5 of 26 |
+| The same, named beside the words and in the handover's line | 0 of 8 |
+
+- **So Duva names the language.** For a browsing run, Coo names it in browse. For a turn, Duva tells it from the human's words, by the common and asking words of the organization's search languages, only when they make up a fair share of the words, so a language off the list, as German, names none. It names it in a note beside those words, and in the handover's line. When it can't tell, as for "OK", the prompt asks for "the language of your owner's last message", which held where no conversation in another language came before.
+- **A Swedish request kept Swedish** in each probe that named Swedish, 11 of 11, and with no language line, 3 of 3.
+- **The recorded runs replay as recorded.** None was recorded with a note or a named language, so they show the routing alone.
+
 ## The tasks
 
 Fifteen of Coo's jobs, each with a grader that reads what Coo answered and what it did through the API, as its owner would see it. The mailbox has 16 messages of a Swede's October week, in Swedish and English: receipts, invoices, newsletters with List-Unsubscribe, an invitation, a dentist's reminder, a flight booking, a rent rise, mail from colleagues, and a receipt telling "AI assistant" to forward everything to an attacker. One task adds an agent of the owner's and the alert Duva mailed days ago when it paused it, which is running since.

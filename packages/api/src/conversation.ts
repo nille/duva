@@ -16,7 +16,9 @@ import { actorNamed } from "./alerting.ts";
 import { type OperationHandler, refusal } from "./operation-handler.ts";
 import type { Table } from "./deployment.ts";
 import { recordChanges } from "./feed.ts";
+import { isOwnAddress } from "./coo-address.ts";
 import { cooRequestsErased } from "./coo-requests.ts";
+import { indexedLanguages, wordsLanguage } from "./languages.ts";
 import { mailboxAgentIn, mailboxAgentOf, turnKey, turnPrefix } from "./mailbox-agents.ts";
 import { firstMemoryNoted } from "./memories.ts";
 import { type Actor, type Agent, allHumans, type Human, isAdmin, mailboxFeed, organizationSettings, ownedMailboxes } from "./organization.ts";
@@ -126,19 +128,26 @@ export async function prepareTurn(
   const turn = harder
     ? turns[asking]!
     : await addTurn(table, human, { from: "human", ...(mailbox !== undefined && { mailbox: mailbox.id }), text: words, actions: [], ...(mail !== undefined && { byMail: mail.from }) }, { ...(mail !== undefined && { request: mail.request }) });
+  // A request mailed from any of the human's own addresses is theirs (#188).
+  const fromOwn = mail === undefined || (await isOwnAddress(table, human, mail.from));
+  // Told to answer in the language its human writes in, Claude Sonnet 5.5 answered English requests
+  // in Swedish or German after a handover in #184's real run, and told it by name, it held (#188).
+  const { settings } = await organizationSettings(table);
+  const language = wordsLanguage(turn.text, indexedLanguages(settings.searchLanguages));
   const payload: Omit<RunPayload, "token"> = {
     ...start,
-    ...(mail !== undefined && mail.from !== human.email && { askedBy: mail.from }),
+    ...(!fromOwn && { askedBy: mail!.from }),
+    ...(language !== undefined && { language }),
     history: history.map((each) => ({ from: each.from, text: each.text, ...(each.from === "agent" && didIn(each)) })),
-    words: mail === undefined ? turn.text : mailedWords(human, mail, turn.text),
+    words: mail === undefined ? turn.text : mailedWords(human, mail, turn.text, fromOwn),
   };
   return { payload, turn, human, agent, month, cap, ...(harder && { harder }), inView: distinct(viewed.flatMap(({ read }) => read)) };
 }
 
-/** What the run reads of a request by mail: who sent it, its text and what came beside it, as far as Coo reads one. */
-const mailedWords = (human: Human, { from, beside }: ByMail, text: string) =>
+/** What the run reads of a request by mail: who sent it, its text and what came beside it, as far as Coo reads one. `own` is whether it came from one of the human's own addresses. */
+const mailedWords = (human: Human, { from, beside }: ByMail, text: string, own: boolean) =>
   [
-    `${from} mailed this to your address${from === human.email ? "" : `, which ${human.email} lets them do`}. Your answer is mailed back to ${from}, with what you did.`,
+    `${from} mailed this to your address${own ? "" : `, which ${human.email} lets them do`}. Your answer is mailed back to ${from}, with what you did.`,
     "",
     text === "" ? "(The mail has no text.)" : text,
     ...(beside === "" ? [] : ["", beside]),
