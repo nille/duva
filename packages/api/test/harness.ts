@@ -143,6 +143,11 @@ export interface DuvaOptions {
    */
   beforeApprovalLog?: boolean;
   /**
+   * Whether the deployment runs a version from before the approval log listed payments until
+   * setUp() deploys this one, so the decisions on payments made until then aren't in it.
+   */
+  beforePaymentLog?: boolean;
+  /**
    * The organization's undo window in seconds, as its admins set it before the test. 0 unless
    * given, so approved sends go out at once; null leaves Duva's own default.
    */
@@ -390,6 +395,7 @@ export async function startDuva({
   indexingHeld = false,
   beforeSearch = false,
   beforeApprovalLog = false,
+  beforePaymentLog = false,
   undoWindow = 0,
   beforeMailboxAgents = false,
   beforeCoo = false,
@@ -618,6 +624,7 @@ export async function startDuva({
   // caught up, unless indexing is held, so tests see the outcome.
   let screenerDeployed = !beforeScreener;
   let approvalLogDeployed = !beforeApprovalLog;
+  let paymentLogDeployed = !beforePaymentLog;
   let mailboxAgentsDeployed = !beforeMailboxAgents;
   let cooDeployed = !beforeCoo;
   let cooAddressDeployed = !beforeCooAddress;
@@ -636,6 +643,7 @@ export async function startDuva({
     for (let each = handed.shift(); each !== undefined; each = handed.shift()) if (!eraserRunsLost && (deliveriesDeployed || !("eraseSender" in each))) await eraser(each);
     if (!screenerDeployed) await forgetScreener(table);
     if (!approvalLogDeployed) await forgetApprovalLog(table);
+    if (!paymentLogDeployed) await forgetPaymentLog(table);
     if (!mailboxAgentsDeployed) await forgetMailboxAgents(table);
     if (!oneCooDeployed) await forgetOneCoo(table);
     if (!cooDeployed) await forgetCoo(table);
@@ -844,6 +852,7 @@ export async function startDuva({
       projectTagDeployed = true;
       await browserProfiles.tag();
       approvalLogDeployed = true;
+      paymentLogDeployed = true;
       await listEarlierDecisions(table);
       // The feeder starts with this version, and reads only what is written from then on.
       if (!searchDeployed) await feed.deliver();
@@ -1229,6 +1238,21 @@ async function forgetApprovalLog(table: Table) {
     new ScanCommand({
       TableName: table.name,
       FilterExpression: "begins_with(#sk, :decided)",
+      ExpressionAttributeNames: { "#sk": tableKey.sortKey },
+      ExpressionAttributeValues: { ":decided": { S: decisionPrefix } },
+    }),
+  );
+  for (const item of Items) {
+    await table.client.send(new DeleteItemCommand({ TableName: table.name, Key: { [tableKey.partitionKey]: item[tableKey.partitionKey]!, [tableKey.sortKey]: item[tableKey.sortKey]! } }));
+  }
+}
+
+/** Removes what a version from before the approval log listed payments didn't write: each decision on a payment's listing in its human's log. */
+async function forgetPaymentLog(table: Table) {
+  const { Items = [] } = await table.client.send(
+    new ScanCommand({
+      TableName: table.name,
+      FilterExpression: "begins_with(#sk, :decided) AND attribute_exists(payment)",
       ExpressionAttributeNames: { "#sk": tableKey.sortKey },
       ExpressionAttributeValues: { ":decided": { S: decisionPrefix } },
     }),

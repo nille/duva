@@ -9,17 +9,19 @@
 // Each payment is recorded with the run that made it, a turn of Ask Coo or a label's task, in the
 // same transaction as the card's month and the change in the mailbox's feed that Coo's activity and
 // bubble show, so a run that runs again, as a retried task or Think harder, never pays twice. Coo
-// reads its human's payments, so it says how each stands (#184).
+// reads its human's payments, so it says how each stands (#184), and each decision on one is listed
+// in its human's approval log, with what became of it (#186).
 import { randomUUID } from "node:crypto";
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import type { SchedulerClient } from "@aws-sdk/client-scheduler";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { components } from "@duva/openapi";
 import type { Table } from "./deployment.ts";
+import { decisionKey, listDecision } from "./decisions.ts";
 import { recordChanges } from "./feed.ts";
 import { scheduleOnce, type ScheduleGroup } from "./limits.ts";
 import { type OperationHandler, refusal } from "./operation-handler.ts";
-import { actorKey, type Agent, duva, mailboxFeed } from "./organization.ts";
+import { actorKey, type Agent, duva, findActor, mailboxFeed } from "./organization.ts";
 import type { RunIdentity } from "./run-tokens.ts";
 import {
   amountOf,
@@ -130,6 +132,11 @@ async function storedPayments(table: Table, human: string): Promise<StoredPaymen
 /** The payments the human's Coo made or asked for in the run of their turn, newest first, as a request by mail reports them (ADR-0040). */
 export async function paymentsOfTurn(table: Table, human: string, turn: string): Promise<Payment[]> {
   return (await storedPayments(table, human)).filter(({ run }) => run.turn === turn).map(paymentOf);
+}
+
+/** The human's Coo's payments they approved or declined, newest first, as their approval log lists them (#186). */
+export async function decidedPayments(table: Table, human: string): Promise<Payment[]> {
+  return (await storedPayments(table, human)).filter(({ decidedAt }) => decidedAt !== undefined).map(paymentOf);
 }
 
 /** The human's Coo's payment with the ID, if there is one. */
@@ -247,9 +254,11 @@ export async function lapsePayment(table: Table, { human, payment: id }: Payment
   }
 }
 
-/** The card's payments not yet paid or declined, which go with the card. */
+/** The card's payments not yet paid or declined, which go with the card, with the approval log's listings of those approved. */
 export async function openPayments(table: Table, card: StoredSecret): Promise<Record<string, unknown>[]> {
-  return (await storedPayments(table, card.human)).filter(({ card: of, state }) => of === card.id && (state === "waiting" || state === "approved")).map((payment) => paymentKey(card.human, payment.id));
+  return (await storedPayments(table, card.human))
+    .filter(({ card: of, state }) => of === card.id && (state === "waiting" || state === "approved"))
+    .flatMap(({ id, decidedAt }) => [paymentKey(card.human, id), ...(decidedAt === undefined ? [] : [decisionKey(card.human, decidedAt, id)])]);
 }
 
 /** What a card's part costs: a payment, which the run may make, waits for, or is refused. */
@@ -386,10 +395,11 @@ export const listPayments: OperationHandler = async (_event, { table }, actor) =
 };
 
 /**
- * Approves or declines the payment waiting for the human, recorded in its mailbox's feed under them.
- * Approving a payment on a site its card doesn't name adds the site to the card, and the change has
- * the task giver hand the payment to a fresh run, which goes back and pays it (payment-runs.ts).
- * The approval lapses 24 hours on, if nothing paid it. Declining drops its way back.
+ * Approves or declines the payment waiting for the human, recorded in its mailbox's feed under them,
+ * and listed in their approval log (#186). Approving a payment on a site its card doesn't name adds
+ * the site to the card, and the change has the task giver hand the payment to a fresh run, which
+ * goes back and pays it (payment-runs.ts). The approval lapses 24 hours on, if nothing paid it.
+ * Declining drops its way back.
  */
 const decide =
   (approved: boolean): OperationHandler =>
@@ -402,7 +412,7 @@ const decide =
     if (payment.state !== "waiting") return waitingNoMore();
     const at = new Date().toISOString();
     const state = approved ? "approved" : "declined";
-    const card = approved && payment.newSite ? await findSecret(table, actor.id, payment.card) : undefined;
+    const [card, agent] = await Promise.all([approved && payment.newSite ? findSecret(table, actor.id, payment.card) : undefined, findActor(table, payment.agent)]);
     const siteAdded = card !== undefined && !paysOn(card, payment.site);
     // Scheduled first, so no approval lacks the schedule that has it lapse. One for a payment decided
     // otherwise meanwhile finds it declined, or paid, and does nothing.
@@ -435,6 +445,7 @@ const decide =
                 },
               ]
             : []),
+          listDecision(table, actor.id, { payment: payment.id, agent: payment.agent, agentName: agent?.kind === "agent" ? agent.name : "", decidedBy: actor.id, decidedAt: at }),
         ],
       });
     } catch (error) {

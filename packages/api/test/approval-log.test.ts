@@ -35,7 +35,11 @@ async function withAgent(options: DuvaOptions = {}) {
     now += seconds(by);
     await duva.clock(new Date(now));
   };
-  const log = async (by = ada, query?: { limit?: number; after?: string }) => (await by.GET("/approvals/log", { params: { query } })).data!;
+  /** A sponsor's log, Ada's unless another is given. Hermes asks only to send, so each entry is a send's. */
+  const log = async (by = ada, query?: { limit?: number; after?: string }) => {
+    const { entries, next } = (await by.GET("/approvals/log", { params: { query } })).data!;
+    return { entries: entries.map((entry) => (entry.kind === "send" ? entry : expect.unreachable(`A ${entry.kind}'s decision is in the log.`))), ...(next !== undefined && { next }) };
+  };
   return { duva, ada, adaId: me!.id, grace, hermes, agent, mailbox: mailbox!, params, ask, later, log };
 }
 
@@ -53,6 +57,7 @@ test("the sponsor's log lists every decision on their agents' sends, newest firs
   const decided = { agent: agent.id, agentName: "Hermes", decidedBy: adaId, decidedAt: expect.any(String) };
   expect(entries).toEqual([
     {
+      kind: "send",
       approval: rejected.approval,
       ...decided,
       outcome: "rejected",
@@ -65,6 +70,7 @@ test("the sponsor's log lists every decision on their agents' sends, newest firs
       cc: [{ address: "linus@example.net" }],
     },
     {
+      kind: "send",
       approval: sent.approval,
       ...decided,
       outcome: "sent",

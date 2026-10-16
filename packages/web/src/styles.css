@@ -1963,19 +1963,27 @@ button.selector[aria-expanded="true"] {
 }
 
 .queue-row-decided .queue-kind.queue-outcome-sent,
-.queue-outcome-sent {
+.queue-row-decided .queue-kind.queue-outcome-paid,
+.queue-outcome-sent,
+.queue-outcome-paid {
   color: var(--sent-ink);
 }
 
 .queue-row-decided .queue-kind.queue-outcome-failed,
 .queue-row-decided .queue-kind.queue-outcome-unclear,
+.queue-row-decided .queue-kind.queue-outcome-notMade,
 .queue-outcome-failed,
-.queue-outcome-unclear {
+.queue-outcome-unclear,
+.queue-outcome-notMade {
   color: var(--alert-ink);
 }
 
 .queue-row-decided .queue-kind.queue-outcome-rejected,
-.queue-outcome-rejected {
+.queue-row-decided .queue-kind.queue-outcome-declined,
+.queue-row-decided .queue-kind.queue-outcome-lapsed,
+.queue-outcome-rejected,
+.queue-outcome-declined,
+.queue-outcome-lapsed {
   color: var(--ink-3);
 }
 

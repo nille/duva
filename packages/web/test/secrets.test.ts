@@ -195,3 +195,93 @@ test("a payment above a card's limits waits in Approvals with its amount, site a
   const cost = page.getByRole("main").locator(".event-fact").filter({ has: page.getByRole("term").filter({ hasText: "Cost" }) }).getByRole("definition");
   await expect.poll(() => cost.innerText(), wait).toMatch(/^[\d.]+ cents?$/);
 });
+
+/** Opens Approvals' Log from the navigation, as the human does. */
+async function openLog(page: Page) {
+  await page.getByRole("navigation", { name: "Duva" }).getByRole("link", { name: /^Approvals/ }).click();
+  await page.getByRole("group", { name: "Which list" }).getByRole("button", { name: "Log" }).click();
+}
+const logRows = (page: Page) => page.getByRole("list", { name: "Approval log" }).getByRole("button");
+/** What the page shows of the element, a line for each block in it. */
+const lines = (text: string) => text.replace(/\n+/g, "\n");
+
+/**
+ * Grace's Coo asked to pay 149.00 SEK at shop.example.net with her Visa, above its limits, and she
+ * approved it from the API. `page` is how the browsing runs go, the one that asked first, and the
+ * shop's checkout expires once `expired` is set.
+ */
+async function withApprovedPayment(page: ((request: Request) => Event[])[], options: Parameters<typeof startWebApp>[0] = {}) {
+  const model = scripted({
+    coo: [() => [use("browse", { url: "https://shop.example.net/checkout", goal: "Buy the coffee beans.", secrets: ["Visa"] })], () => [{ text: "The payment waits for your approval." }]],
+    page: [() => [use("fillSecret", { element: 1, secret: "Visa", part: "number", amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg" })], ...page],
+  });
+  const app = await withMailbox({ model, ...options });
+  const checkout = { expired: false };
+  await app.duva.webServer("shop.example.net", {
+    answer: ({ url }) =>
+      new Response(
+        new URL(url).pathname === "/pay"
+          ? "<!doctype html><title>Shop</title><p>Paid. Thank you!</p>"
+          : checkout.expired
+            ? "<!doctype html><title>Shop</title><p>This checkout has expired.</p>"
+            : `<!doctype html><title>Shop</title><p>Total: 149.00 SEK</p><form method="post" action="/pay"><label for="n">Card number</label><input id="n" name="n" autocomplete="cc-number"><button>Pay now</button></form>`,
+        { headers: { "content-type": "text/html" } },
+      ),
+  });
+  await app.grace.POST("/secrets", { body: { kind: "card", name: "Visa", number: "4242424242424242", expiry: "12/29", cvc: "123", currency: "SEK", perPayment: "100.00", perMonth: "300.00", sites: ["example.net"] } });
+  await app.duva.askAgent("grace@example.org", { mailbox: app.mailbox.id, words: "Buy the coffee beans in my cart." });
+  const { data } = await app.grace.GET("/payments");
+  return { ...app, checkout, approve: () => app.grace.POST("/payments/{payment}/approve", { params: { path: { payment: data!.payments[0]!.id } } }) };
+}
+
+test("Approvals' Log lists a payment its human approved, and once Coo goes back and pays it, while the Log is open, says it paid, with the amount and when", budget, async () => {
+  const { page, signIn, duva, approve } = await withApprovedPayment(
+    [
+      () => [use("fillSecret", { element: 1, secret: "Visa", part: "number", amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg" })],
+      () => [use("click", { element: 2 })],
+      () => [use("finish", { done: true, said: "It paid for the coffee beans." })],
+    ],
+    { tasksHeld: true },
+  );
+  await approve();
+  await signIn("grace@example.org");
+  await openLog(page);
+  await expect.poll(() => logRows(page).count(), wait).toBe(1);
+  expect(lines(await logRows(page).nth(0).innerText())).toMatch(/^Coo\nApproved\n.+\n149\.00 SEK on example\.net With Visa, for Coffee beans, 1 kg$/);
+  const entry = page.getByRole("article", { name: /You approved Coo/ });
+  await expect.poll(() => entry.innerText(), wait).toContain("Approved. Coo goes back to the page and pays it, and says in its activity how it went.");
+
+  await duva.releaseTasks();
+
+  await expect.poll(async () => lines(await logRows(page).nth(0).innerText()), wait).toMatch(/^Coo\nPaid\n/);
+  await expect.poll(() => entry.innerText(), wait).toContain("Coo paid 149.00 SEK with Visa, as you approved.");
+  expect(lines(await entry.innerText())).toMatch(/\nPaid\n.+\n/);
+});
+
+test("a payment the run that went back couldn't pay is in the Log as not made, with what the run said, and once it lapses a day on, while the Log is open, as lapsed", budget, async () => {
+  const { page, signIn, duva, checkout, approve, hide, show } = await withApprovedPayment([() => [use("finish", { done: false, said: "The checkout had expired" })]], { hiddenPollInterval: 600_000 });
+  checkout.expired = true;
+  await approve();
+  await signIn("grace@example.org");
+
+  await openLog(page);
+
+  await expect.poll(async () => lines(await logRows(page).nth(0).innerText()), wait).toMatch(/^Coo\nNot made\n/);
+  const entry = page.getByRole("article", { name: /You approved Coo/ });
+  await expect.poll(() => entry.innerText(), wait).toContain("Coo went back to pay it, as you approved, and couldn't: The checkout had expired.");
+  expect(await entry.innerText()).toContain("Your approval lapses 24 hours after you gave it.");
+
+  // A day on, with the Log still open. The tab is hidden while both clocks move, so no read reaches
+  // Duva with a session the browser's clock hasn't renewed, and once the read that was due has
+  // passed, the next is ten minutes away.
+  await hide();
+  await page.waitForTimeout(2_000);
+  const dayOn = new Date(Date.now() + 24 * 60 * 60 * 1000 + 60_000);
+  await duva.clock(dayOn);
+  await page.clock.setSystemTime(dayOn);
+  await show();
+
+  await expect.poll(async () => lines(await logRows(page).nth(0).innerText()), wait).toMatch(/^Coo\nLapsed\n/);
+  await expect.poll(() => entry.innerText(), wait).toContain("Lapsed. It went unpaid for 24 hours after you approved it. Ask Coo again if you still want it.");
+  expect(await entry.innerText()).toContain("Coo went back to pay it, as you approved, and couldn't: The checkout had expired.");
+});

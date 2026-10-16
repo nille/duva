@@ -2019,16 +2019,17 @@ export const strings = {
 
   log: {
     title: "Approval log",
-    lead: "Every decision on your agents' sends, newest first, with what became of it.",
+    lead: "Every decision on your agents' sends and Coo's payments, newest first, with what became of it.",
     empty: "No decisions yet",
-    emptyLead: "When you send or reject what an agent asks to send, the decision is logged here, with how it went.",
+    emptyLead: "When you send or reject what an agent asks to send, or approve or decline a payment Coo asks to make, the decision is logged here, with how it went.",
     more: "Show older decisions",
     loading: "Reading older decisions…",
     readFailed: "Duva couldn't read the log. It tries again with the next update.",
     back: "The whole log",
     pick: "Choose a decision to read it here.",
-    outcomes: { approved: "Approved", sent: "Sent", failed: "Failed", unclear: "Unclear", rejected: "Rejected" },
-    headline: (outcome: "approved" | "sent" | "failed" | "unclear" | "rejected", by: string) => (outcome === "rejected" ? `${by} rejected` : `${by} approved`),
+    outcomes: { approved: "Approved", sent: "Sent", failed: "Failed", unclear: "Unclear", rejected: "Rejected", declined: "Declined", paid: "Paid", notMade: "Not made", lapsed: "Lapsed" },
+    headline: (outcome: components["schemas"]["ApprovalLogEntry"]["outcome"], by: string) =>
+      outcome === "rejected" ? `${by} rejected` : outcome === "declined" ? `${by} declined` : `${by} approved`,
     you: "You",
     someone: "Someone",
     decidedAt: (time: string) => `Decided ${time}`,
@@ -2053,6 +2054,10 @@ export const strings = {
     decideFailed: (status: number) => `Duva answered ${status}. Try again.`,
     unreachable: "Duva couldn't be reached. Check your connection and try again.",
     changedMeanwhile: "This changed meanwhile, so the log shows it as it is now.",
+    paid: (agent: string, amount: string, currency: string, card: string) => `${agent} paid ${amount} ${currency} with ${card}, as you approved.`,
+    paidAt: "Paid",
+    notMade: (agent: string, said: string) => `${agent} went back to pay it, as you approved, and couldn't: ${said}`.replace(/([^.!?])$/, "$1."),
+    lapses: "Your approval lapses 24 hours after you gave it.",
   },
 
   undo: {

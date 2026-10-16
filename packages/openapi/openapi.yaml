@@ -4852,17 +4852,22 @@ paths:
   /approvals/log:
     get:
       operationId: listApprovalLog
-      summary: List the decisions on your agents' sends, newest first, each with what became of it.
+      summary: List the decisions on your agents' sends and your Coo's payments, newest first, each with what became of it.
       description: >
         The approval log: every decision on a send one of your agents asked
-        you for, newest first, with who decided it and when, and how it
-        went: approved and on its way, sent, failed, unclear, or rejected
-        with its note. Each entry links to its thread, and says how the
-        decision can be taken back, if it can. It reaches as far
-        back as approval records are kept (ADR-0014). An undone approval
-        waits again, so it leaves the log until it is decided again. To read
-        the next page, call again with the answer's next as after, until an
-        answer has no next.
+        you for, and on a payment your Coo asked you for, newest first, with
+        who decided it and when, and how it went. A send was approved and is
+        on its way, sent, failed, unclear, or rejected with its note. Each
+        send's entry links to its thread, and says how the decision can be
+        taken back, if it can. It reaches as far back as approval records are
+        kept (ADR-0014). An undone approval waits again, so it leaves the log
+        until it is decided again. A payment was approved, and Coo is going
+        back to pay it, or declined, or paid. It was not made when the run
+        that went back couldn't pay it, which says why, and it lapsed when it
+        went unpaid for 24 hours after it was approved. One deleted with its
+        card leaves the log.
+        To read the next page, call again with the answer's next as after,
+        until an answer has no next.
       x-cli-command: approvals log
       parameters:
         - name: limit
@@ -8669,11 +8674,24 @@ components:
           type: string
           description: Where the next page starts, if there is one. Give it as after.
     ApprovalLogEntry:
+      description: A decision in the approval log, on a send one of your agents asked for or a payment your Coo asked for, and what became of it.
+      oneOf:
+        - $ref: "#/components/schemas/SendLogEntry"
+        - $ref: "#/components/schemas/PaymentLogEntry"
+      discriminator:
+        propertyName: kind
+        mapping:
+          send: "#/components/schemas/SendLogEntry"
+          payment: "#/components/schemas/PaymentLogEntry"
+    SendLogEntry:
       type: object
       additionalProperties: false
-      required: [approval, agent, agentName, decidedBy, decidedAt, outcome, mailbox, draft, subject, to, cc]
+      required: [kind, approval, agent, agentName, decidedBy, decidedAt, outcome, mailbox, draft, subject, to, cc]
       description: A decision on a send one of your agents asked for, and what became of it.
       properties:
+        kind:
+          type: string
+          const: send
         approval:
           type: string
           description: The approval's ID.
@@ -8741,6 +8759,75 @@ components:
         reason:
           type: string
           description: Why it failed.
+    PaymentLogEntry:
+      type: object
+      additionalProperties: false
+      required: [kind, payment, agent, agentName, decidedBy, decidedAt, outcome, cardName, site, amount, currency, for, mailbox]
+      description: >-
+        A decision on a payment your Coo asked for, above its card's limits or
+        on a site the card doesn't name, and what became of it (ADR-0039).
+      properties:
+        kind:
+          type: string
+          const: payment
+        payment:
+          type: string
+          description: The payment's ID.
+        agent:
+          type: string
+          description: The ID of the mailbox agent whose run asked.
+        agentName:
+          type: string
+          description: The agent's name when it was decided.
+        decidedBy:
+          type: string
+          description: The ID of the human who decided.
+        decidedAt:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          enum: [approved, declined, paid, notMade, lapsed]
+          description: >
+            How it went: approved, while Coo goes back to the page to pay it;
+            declined, so nothing paid it; paid, with when; notMade, when the
+            run that went back couldn't pay it, with why, while it stays
+            approved for a run of the turn or task that asked; or lapsed,
+            unpaid 24 hours after it was approved.
+        cardName:
+          type: string
+          description: The card's name.
+        site:
+          type: string
+          description: The site it pays on, as example.com.
+        amount:
+          $ref: "#/components/schemas/Amount"
+        currency:
+          $ref: "#/components/schemas/Currency"
+        for:
+          type: string
+          description: What it is for, as Coo's run said.
+        mailbox:
+          type: string
+          description: The ID of the mailbox whose change feed records it, as Coo's activity shows it.
+        paidAt:
+          type: string
+          format: date-time
+          description: When it was paid, once it was.
+        notMade:
+          type: object
+          additionalProperties: false
+          required: [at, said]
+          description: >-
+            Present when the run that went back to pay it couldn't, as when
+            the page expired: when it ended, and why, as it said, which Coo's
+            activity says too.
+          properties:
+            at:
+              type: string
+              format: date-time
+            said:
+              type: string
     Rejection:
       type: object
       additionalProperties: false

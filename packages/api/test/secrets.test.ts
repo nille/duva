@@ -509,6 +509,90 @@ test("payments' answers, listed, approved and declined, carry only the contract'
   for (const payment of [...listed, approved, declined, ...after]) expect(Object.keys(payment).filter((key) => !contract.has(key))).toEqual([]);
 });
 
+/** Linus's approval log, newest first, signed in again, as the clock may have moved past an earlier session. */
+const logOf = async (duva: Awaited<ReturnType<typeof withShop>>["duva"]) => (await duva.signIn("linus@example.org").GET("/approvals/log")).data!.entries;
+
+test("the approval log lists the payments its human decided among their sends' decisions, newest first, with who decided and when, and what became of each: approved while Coo goes back, then paid with when, or declined", async () => {
+  const { model } = scripted({ coo: [...buysTheBeans(), ...buysTheBeans()], page: [...paysWithTheCard("149.00").slice(0, 1), ...paysWithTheCard("149.00").slice(0, 1), ...paysWithTheCard("149.00")] });
+  const { duva, linus, params, agent, ask, keep, linusId } = await withShop({ model, tasksHeld: true });
+  await keep({ ...visa, ...limits, ...onTheShop });
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  await ask("Buy another bag.");
+  const [second, first] = (await linus.GET("/payments")).data!.payments;
+  const { data: created } = await linus.POST("/agents", { body: { name: "Hermes" } });
+  await linus.PATCH("/agents/{agent}/settings", { params: { path: { agent: created!.agent.id } }, body: { sponsorAccess: "send" } });
+  const hermes = duva.withKey(created!.key);
+  const { data: draft } = await hermes.POST("/mailboxes/{mailbox}/drafts", { params, body: { to: ["grace@example.org"], subject: "Meeting", text: "Monday works." } });
+  const { data: asked } = await hermes.POST("/mailboxes/{mailbox}/drafts/{draft}/send", { params: { path: { ...params.path, draft: draft!.id } } });
+  const later = () => duva.clock(new Date(Date.now() + 60_000));
+
+  await duva.signIn("linus@example.org").POST("/payments/{payment}/approve", { params: { path: { payment: first!.id } } });
+  const goingBack = await logOf(duva);
+  await duva.releaseTasks();
+  await later();
+  await duva.signIn("linus@example.org").POST("/approvals/{approval}/send", { params: { path: { approval: asked!.send!.approval! } } });
+  await later();
+  await duva.signIn("linus@example.org").POST("/payments/{payment}/decline", { params: { path: { payment: second!.id } } });
+  const entries = await logOf(duva);
+
+  const payment = { kind: "payment", agent: agent.id, agentName: "Coo", decidedBy: linusId, decidedAt: expect.any(String), cardName: "Visa", site: "example.net", amount: "149.00", currency: "SEK", for: "Coffee beans, 1 kg", mailbox: params.path.mailbox };
+  expect(goingBack).toEqual([{ ...payment, payment: first!.id, outcome: "approved" }]);
+  expect(entries).toEqual([
+    { ...payment, payment: second!.id, outcome: "declined" },
+    expect.objectContaining({ kind: "send", approval: asked!.send!.approval!, agentName: "Hermes", outcome: "sent", subject: "Meeting" }),
+    { ...payment, payment: first!.id, outcome: "paid", paidAt: expect.any(String) },
+  ]);
+});
+
+test("a payment the run that went back couldn't make is in the approval log as not made, with when and what the run said, and as lapsed once 24 hours have passed since its approval", async () => {
+  const { duva } = await approvedAfterTheCheckoutExpired([]);
+
+  const notMade = await logOf(duva);
+  await duva.clock(new Date(Date.now() + 24 * 60 * 60 * 1000 + 60_000));
+  const lapsed = await logOf(duva);
+
+  const said = { at: expect.any(String), said: "The checkout had expired, so it couldn't pay." };
+  expect(notMade).toEqual([expect.objectContaining({ kind: "payment", outcome: "notMade", amount: "149.00", site: "example.net", notMade: said })]);
+  expect(lapsed).toEqual([expect.objectContaining({ kind: "payment", outcome: "lapsed", notMade: said })]);
+});
+
+test("a payment approved and then deleted with its card leaves the approval log", async () => {
+  const { model } = scripted({ coo: buysTheBeans(), page: paysWithTheCard("149.00").slice(0, 1) });
+  const { duva, linus, ask, keep } = await withShop({ model, tasksHeld: true });
+  const card = await keep({ ...visa, ...limits, ...onTheShop });
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  const [waiting] = (await linus.GET("/payments")).data!.payments;
+  await linus.POST("/payments/{payment}/approve", { params: { path: { payment: waiting!.id } } });
+  const before = await logOf(duva);
+
+  await linus.DELETE("/secrets/{secret}", { params: { path: { secret: card.id } } });
+
+  expect(before.map(({ outcome }) => outcome)).toEqual(["approved"]);
+  expect(await logOf(duva)).toEqual([]);
+});
+
+test("payments decided before the approval log listed them are in it once Duva is set up again, each once", async () => {
+  const { model } = scripted({ coo: [...buysTheBeans(), ...buysTheBeans()], page: [...paysWithTheCard("149.00").slice(0, 1), ...paysWithTheCard("149.00").slice(0, 1)] });
+  const { duva, linus, ask, keep } = await withShop({ model, beforePaymentLog: true, tasksHeld: true });
+  await keep({ ...visa, ...limits, ...onTheShop });
+  await ask("Buy the coffee beans in my cart at Example Shop.");
+  await ask("Buy another bag.");
+  const [second, first] = (await linus.GET("/payments")).data!.payments;
+  await linus.POST("/payments/{payment}/approve", { params: { path: { payment: first!.id } } });
+  await duva.clock(new Date(Date.now() + 60_000));
+  await duva.signIn("linus@example.org").POST("/payments/{payment}/decline", { params: { path: { payment: second!.id } } });
+  const before = await logOf(duva);
+
+  await duva.setUp({ admin: "ada@example.org" });
+  const after = await logOf(duva);
+  await duva.setUp({ admin: "ada@example.org" });
+
+  expect(before).toEqual([]);
+  expect(after.map(({ kind, outcome }) => `${kind} ${outcome}`)).toEqual(["payment declined", "payment approved"]);
+  expect(after).toMatchObject([{ payment: second!.id, agentName: "Coo" }, { payment: first!.id, agentName: "Coo" }]);
+  expect(await logOf(duva)).toHaveLength(2);
+});
+
 test("a card's sites are given with it, added and removed, each as its domain or a page's address there, never an ending anyone's site is under", async () => {
   const { linus, keep } = await withShop();
   const card = await keep({ ...visa, sites: ["https://www.SJ.se/biljetter", "netflix.com", "netflix.com"] });

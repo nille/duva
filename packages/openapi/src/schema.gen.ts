@@ -2499,8 +2499,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the decisions on your agents' sends, newest first, each with what became of it.
-         * @description The approval log: every decision on a send one of your agents asked you for, newest first, with who decided it and when, and how it went: approved and on its way, sent, failed, unclear, or rejected with its note. Each entry links to its thread, and says how the decision can be taken back, if it can. It reaches as far back as approval records are kept (ADR-0014). An undone approval waits again, so it leaves the log until it is decided again. To read the next page, call again with the answer's next as after, until an answer has no next.
+         * List the decisions on your agents' sends and your Coo's payments, newest first, each with what became of it.
+         * @description The approval log: every decision on a send one of your agents asked you for, and on a payment your Coo asked you for, newest first, with who decided it and when, and how it went. A send was approved and is on its way, sent, failed, unclear, or rejected with its note. Each send's entry links to its thread, and says how the decision can be taken back, if it can. It reaches as far back as approval records are kept (ADR-0014). An undone approval waits again, so it leaves the log until it is decided again. A payment was approved, and Coo is going back to pay it, or declined, or paid. It was not made when the run that went back couldn't pay it, which says why, and it lapsed when it went unpaid for 24 hours after it was approved. One deleted with its card leaves the log. To read the next page, call again with the answer's next as after, until an answer has no next.
          */
         get: operations["listApprovalLog"];
         put?: never;
@@ -4808,8 +4808,15 @@ export interface components {
             /** @description Where the next page starts, if there is one. Give it as after. */
             next?: string;
         };
+        /** @description A decision in the approval log, on a send one of your agents asked for or a payment your Coo asked for, and what became of it. */
+        ApprovalLogEntry: components["schemas"]["SendLogEntry"] | components["schemas"]["PaymentLogEntry"];
         /** @description A decision on a send one of your agents asked for, and what became of it. */
-        ApprovalLogEntry: {
+        SendLogEntry: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "send";
             /** @description The approval's ID. */
             approval: string;
             /** @description The ID of the agent that asked. */
@@ -4853,6 +4860,50 @@ export interface components {
             note?: string;
             /** @description Why it failed. */
             reason?: string;
+        };
+        /** @description A decision on a payment your Coo asked for, above its card's limits or on a site the card doesn't name, and what became of it (ADR-0039). */
+        PaymentLogEntry: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "payment";
+            /** @description The payment's ID. */
+            payment: string;
+            /** @description The ID of the mailbox agent whose run asked. */
+            agent: string;
+            /** @description The agent's name when it was decided. */
+            agentName: string;
+            /** @description The ID of the human who decided. */
+            decidedBy: string;
+            /** Format: date-time */
+            decidedAt: string;
+            /**
+             * @description How it went: approved, while Coo goes back to the page to pay it; declined, so nothing paid it; paid, with when; notMade, when the run that went back couldn't pay it, with why, while it stays approved for a run of the turn or task that asked; or lapsed, unpaid 24 hours after it was approved.
+             * @enum {string}
+             */
+            outcome: "approved" | "declined" | "paid" | "notMade" | "lapsed";
+            /** @description The card's name. */
+            cardName: string;
+            /** @description The site it pays on, as example.com. */
+            site: string;
+            amount: components["schemas"]["Amount"];
+            currency: components["schemas"]["Currency"];
+            /** @description What it is for, as Coo's run said. */
+            for: string;
+            /** @description The ID of the mailbox whose change feed records it, as Coo's activity shows it. */
+            mailbox: string;
+            /**
+             * Format: date-time
+             * @description When it was paid, once it was.
+             */
+            paidAt?: string;
+            /** @description Present when the run that went back to pay it couldn't, as when the page expired: when it ended, and why, as it said, which Coo's activity says too. */
+            notMade?: {
+                /** Format: date-time */
+                at: string;
+                said: string;
+            };
         };
         Rejection: {
             /**

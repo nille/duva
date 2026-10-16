@@ -1,18 +1,24 @@
-// The approval log on Approvals: the sponsor's decisions on their agents' sends, newest first, as
-// rows in the list column, each tagged with how it went, and the one chosen open in the reading
-// pane. There it offers what the decision still allows: Undo during the undo window, Send after all
-// for a rejection whose draft is as the agent asked it, and Write a correction for mail that went
-// out, which can't be called back.
+// The approval log on Approvals: the sponsor's decisions on their agents' sends, and on their Coo's
+// payments (#186), newest first, as rows in the list column, each tagged with how it went, and the
+// one chosen open in the reading pane. There a send's offers what the decision still allows: Undo
+// during the undo window, Send after all for a rejection whose draft is as the agent asked it, and
+// Write a correction for mail that went out, which can't be called back. A payment's says what
+// became of it: paid, not made, with why, or lapsed.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DuvaClient } from "@duva/client";
 import type { components } from "@duva/openapi";
-import { approvalChanges, type Connection as ConnectionState, type Follow } from "./feed.ts";
+import { approvalChanges, type Connection as ConnectionState, type Follow, paymentChanges } from "./feed.ts";
 import { ActorMark, Addresses, Connection, Field, Time } from "./mail-parts.tsx";
 import { strings } from "./strings.ts";
 import { BackIcon } from "./thread.tsx";
 
 type Entry = components["schemas"]["ApprovalLogEntry"];
+type SendEntry = components["schemas"]["SendLogEntry"];
+type PaymentEntry = components["schemas"]["PaymentLogEntry"];
 type Approval = components["schemas"]["Approval"];
+
+/** Which decision the entry is, as the log keeps and chooses it: its approval's ID, or its payment's. */
+const idOf = (entry: Entry) => (entry.kind === "send" ? entry.approval : entry.payment);
 
 /** The log's rows as read, and where the next page starts, if there is one. */
 type Read = { status: "reading" } | { status: "failed" } | { status: "read"; entries: Entry[]; next?: string };
@@ -65,7 +71,7 @@ export function ApprovalLog({
   useEffect(() => {
     void refresh();
     const unfollow = follow(async (changes) => {
-      if (changes.some(({ change }) => approvalChanges.has(change.type))) await refresh();
+      if (changes.some(({ change }) => approvalChanges.has(change.type) || paymentChanges.has(change.type))) await refresh();
     });
     return () => {
       count.current++;
@@ -82,7 +88,7 @@ export function ApprovalLog({
   };
 
   const entries = read.status === "read" ? read.entries : [];
-  const open = entries.find((entry) => entry.approval === chosen) ?? entries[0];
+  const open = entries.find((entry) => idOf(entry) === chosen) ?? entries[0];
   const paneId = useId();
   const pane = useRef<HTMLDivElement>(null);
   const queue = useRef<HTMLOListElement>(null);
@@ -129,13 +135,13 @@ export function ApprovalLog({
         <p className="queue-lead">{copy.lead}</p>
         <ol className="queue-rows" aria-label={copy.title} ref={queue}>
           {entries.map((entry) => (
-            <li key={entry.approval}>
+            <li key={idOf(entry)}>
               <LogRow
                 entry={entry}
-                current={entry.approval === open?.approval}
+                current={open !== undefined && idOf(entry) === idOf(open)}
                 paneId={paneId}
                 onChoose={() => {
-                  setChosen(entry.approval);
+                  setChosen(idOf(entry));
                   setReading(true);
                   setFocusing("pane");
                 }}
@@ -163,13 +169,14 @@ export function ApprovalLog({
           <BackIcon />
           {copy.back}
         </button>
-        {open !== undefined && <LogEntry key={open.approval} entry={open} me={me} own={own} client={client} onChanged={refresh} onSignedOut={onSignedOut} />}
+        {open?.kind === "send" && <SendLogEntry key={open.approval} entry={open} me={me} own={own} client={client} onChanged={refresh} onSignedOut={onSignedOut} />}
+        {open?.kind === "payment" && <PaymentLogEntry key={open.payment} entry={open} me={me} />}
       </div>
     </main>
   );
 }
 
-/** A row of the log: the agent by its diamond, how it went as a tag, when it was decided, then the subject and its recipients. */
+/** A row of the log: the agent by its mark, how it went as a tag, when it was decided, then a send's subject and its recipients, or a payment's amount and site, card and what it is for. */
 function LogRow({ entry, current, paneId, onChoose }: { entry: Entry; current: boolean; paneId: string; onChoose: () => void }) {
   return (
     <button type="button" className="queue-row queue-row-decided" aria-current={current ? "true" : undefined} aria-controls={paneId} onClick={onChoose}>
@@ -182,17 +189,26 @@ function LogRow({ entry, current, paneId, onChoose }: { entry: Entry; current: b
         <Time at={entry.decidedAt} short />
       </span>
       <span className="queue-line">
-        <b>{entry.subject || strings.galley.noSubject}</b> {strings.log.to([...entry.to, ...entry.cc].map(({ address }) => address).join(", "))}
+        {entry.kind === "send" ? (
+          <>
+            <b>{entry.subject || strings.galley.noSubject}</b> {strings.log.to([...entry.to, ...entry.cc].map(({ address }) => address).join(", "))}
+          </>
+        ) : (
+          <>
+            <b>{strings.approvals.payment.title(entry.amount, entry.currency, entry.site)}</b> {strings.approvals.payment.line(entry.cardName, entry.for)}
+          </>
+        )}
       </span>
     </button>
   );
 }
 
 /** What a decision's tone is, as its slip's mark says it. */
-const toneOf = (outcome: Entry["outcome"]) => (outcome === "sent" ? "sent" : outcome === "rejected" ? "rejected" : outcome === "approved" ? "pending" : "failed");
+const toneOf = (outcome: Entry["outcome"]) =>
+  outcome === "sent" || outcome === "paid" ? "sent" : outcome === "rejected" || outcome === "declined" || outcome === "lapsed" ? "rejected" : outcome === "approved" ? "pending" : "failed";
 
-/** A decision, open in the reading pane: who decided what and when, how it went, and what it still allows. */
-function LogEntry({ entry, me, own, client, onChanged, onSignedOut }: { entry: Entry; me: string; own: ReadonlySet<string> | undefined; client: DuvaClient; onChanged: () => Promise<void>; onSignedOut: () => void }) {
+/** A decision on a send, open in the reading pane: who decided what and when, how it went, and what it still allows. */
+function SendLogEntry({ entry, me, own, client, onChanged, onSignedOut }: { entry: SendEntry; me: string; own: ReadonlySet<string> | undefined; client: DuvaClient; onChanged: () => Promise<void>; onSignedOut: () => void }) {
   const copy = strings.log;
   const titleId = useId();
   const agent = entry.agentName || strings.galley.anAgent;
@@ -309,6 +325,51 @@ function LogEntry({ entry, me, own, client, onChanged, onSignedOut }: { entry: E
           </p>
         )}
       </footer>
+    </article>
+  );
+}
+
+/**
+ * A decision on a payment of Coo's, open in the reading pane: who decided it and when, the amount
+ * and site, the card and what it was for, and what became of it, with why a run that went back
+ * couldn't pay it, as Coo's activity says it.
+ */
+function PaymentLogEntry({ entry, me }: { entry: PaymentEntry; me: string }) {
+  const copy = strings.log;
+  const pay = strings.approvals.payment;
+  const titleId = useId();
+  const agent = entry.agentName || strings.galley.anAgent;
+  const by = entry.decidedBy === me ? copy.you : copy.someone;
+  const notMade = entry.notMade === undefined ? undefined : copy.notMade(agent, entry.notMade.said);
+  const said = { approved: pay.approved, declined: pay.declined, paid: copy.paid(agent, entry.amount, entry.currency, entry.cardName), notMade, lapsed: pay.lapsed }[entry.outcome];
+  return (
+    <article className={`galley log-entry log-entry-${toneOf(entry.outcome)}`} aria-labelledby={titleId}>
+      <header className="galley-head">
+        <h2 id={titleId}>
+          <span className="galley-asks">
+            <ActorMark kind="agent" agent={entry.agent} />
+            {copy.headline(entry.outcome, by)} {agent}
+          </span>{" "}
+          <span className="galley-subject">{pay.title(entry.amount, entry.currency, entry.site)}</span>
+        </h2>
+        <p className="galley-meta">
+          <span className={`queue-kind queue-outcome queue-outcome-${entry.outcome}`}>{copy.outcomes[entry.outcome]}</span>
+          <Time at={entry.decidedAt} format={(time) => copy.decidedAt(time)} />
+        </p>
+      </header>
+      <dl className="galley-fields galley-payment-fields">
+        <Field label={pay.what}>{entry.for}</Field>
+        <Field label={pay.card}>{entry.cardName}</Field>
+        <Field label={pay.site}>{entry.site}</Field>
+        {entry.paidAt !== undefined && (
+          <Field label={copy.paidAt}>
+            <Time at={entry.paidAt} />
+          </Field>
+        )}
+      </dl>
+      <p className="log-said">{said}</p>
+      {entry.outcome === "notMade" && <p className="log-hint">{copy.lapses}</p>}
+      {entry.outcome === "lapsed" && notMade !== undefined && <p className="slip-detail">{notMade}</p>}
     </article>
   );
 }

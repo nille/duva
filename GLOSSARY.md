@@ -110,7 +110,7 @@ Sign-off from an agent's sponsor before the agent's send from the sponsor's mail
 How long an agent's approved send waits before it goes out, so its approver can undo the approval, which puts it back among the requests that wait, as the agent asked it. Admins set it for the organization, from 0 to 120 seconds, 30 by default (ADR-0022). A send held after the window, while its agent is paused or by its send limits, stays approved. A human's own sends never wait.
 
 **Approval log**:
-A sponsor's record of every decision on their agents' sends, newest first: who decided, when, and how it went, sent, failed or rejected with its note. It reaches as far back as approval records are kept (ADR-0014). From it a sponsor undoes a send during its undo window, sends a rejected one after all while its draft is as the agent asked it, or writes a correction to the recipients of mail that went out, which can't be called back.
+A sponsor's record of every decision on their agents' sends, newest first: who decided, when, and how it went, sent, failed or rejected with its note. It reaches as far back as approval records are kept (ADR-0014). Each human's decisions on their Coo's payments are in it too, with what became of each: paid, with when, not made, with why, or lapsed. From it a sponsor undoes a send during its undo window, sends a rejected one after all while its draft is as the agent asked it, or writes a correction to the recipients of mail that went out, which can't be called back.
 
 **Admin**:
 A human allowed to change the organization's setup: domains, addresses, groups, actors and settings. Admins can't read personal mailboxes. Only humans are admins; no agent is one.

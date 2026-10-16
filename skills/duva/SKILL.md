@@ -1313,9 +1313,9 @@ An agent's sends wait for its sponsor, from the sponsor's own mailboxes, so a sp
 
 ## duva approvals log
 
-List the decisions on your agents' sends, newest first, each with what became of it.
+List the decisions on your agents' sends and your Coo's payments, newest first, each with what became of it.
 
-The approval log: every decision on a send one of your agents asked you for, newest first, with who decided it and when, and how it went: approved and on its way, sent, failed, unclear, or rejected with its note. Each entry links to its thread, and says how the decision can be taken back, if it can. It reaches as far back as approval records are kept (ADR-0014). An undone approval waits again, so it leaves the log until it is decided again. To read the next page, call again with the answer's next as after, until an answer has no next.
+The approval log: every decision on a send one of your agents asked you for, and on a payment your Coo asked you for, newest first, with who decided it and when, and how it went. A send was approved and is on its way, sent, failed, unclear, or rejected with its note. Each send's entry links to its thread, and says how the decision can be taken back, if it can. It reaches as far back as approval records are kept (ADR-0014). An undone approval waits again, so it leaves the log until it is decided again. A payment was approved, and Coo is going back to pay it, or declined, or paid. It was not made when the run that went back couldn't pay it, which says why, and it lapsed when it went unpaid for 24 hours after it was approved. One deleted with its card leaves the log. To read the next page, call again with the answer's next as after, until an answer has no next.
 
 - `--limit`: How many entries a page lists at most.
 - `--after`: Where the page starts, the next of the page before it. Leave it out for the first page.
